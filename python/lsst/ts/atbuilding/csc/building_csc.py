@@ -33,6 +33,12 @@ from .config_schema import CONFIG_SCHEMA
 from .enums import ErrorCode
 from .mock_controller import MockVentController
 
+RPI_AVAILABLE = True
+try:
+    from lsst.ts.vent.controller import Config, Controller, Dispatcher
+except ImportError:
+    RPI_AVAILABLE = False
+
 # Max time (sec) to wait for the mock controller to start.
 MOCK_CTRL_START_TIMEOUT = 2
 
@@ -68,9 +74,14 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
     Supported simulation modes
 
     * 0: regular operation
+    * 1: mock controller
+    * 2: full simulation mode
     """
 
-    valid_simulation_modes = (0, 1)
+    if RPI_AVAILABLE:
+        valid_simulation_modes = (0, 1, 2)
+    else:
+        valid_simulation_modes = (0, 1)
     version = __version__
 
     def __init__(
@@ -90,6 +101,9 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
         # Mock controller, used if simulation_mode is 1
         self.mock_ctrl = None
+
+        # Simulated vent controller, used if simulation_mode is 2
+        self.simulated_dispatcher = None
 
         # Task that waits while connecting to the TCP/IP controller.
         self.connect_task = utils.make_done_future()
@@ -170,13 +184,18 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
     async def connect(self):
         """Connect to the building RPi's TCP/IP port."""
-        if self.simulation_mode == 1:
-            await self.start_mock_ctrl()
-            host = self.mock_ctrl.host
-            port = self.mock_ctrl.port
-        else:
-            host = self.config.host
-            port = self.config.port
+        match self.simulation_mode:
+            case 0:
+                host = self.config.host
+                port = self.config.port
+            case 1:
+                await self.start_mock_ctrl()
+                host = self.mock_ctrl.host
+                port = self.mock_ctrl.port
+            case 2:
+                await self.start_dispatcher()
+                host = self.simulated_dispatcher.host
+                port = self.simulated_dispatcher.port
 
         if self.config is None:
             raise RuntimeError("Not yet configured")
@@ -208,6 +227,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         await self.client.close()
         self.listen_task.cancel()
         await self.stop_mock_ctrl()
+        await self.stop_dispatcher()
 
     async def start_mock_ctrl(self):
         """Start the controller with the mock object as server."""
@@ -229,6 +249,28 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         self.mock_ctrl = None
         if mock_ctrl is not None:
             await mock_ctrl.close()
+
+    async def start_dispatcher(self):
+        """Start the simulated dispatcher."""
+        assert self.simulation_mode == 2
+        cfg = Config()
+        cfg.hostname = "localhost"
+        cfg.port = 26034  # Set in simulator_setup.json
+        self.simulated_controller = Controller(cfg, simulate=True)
+        await self.simulated_controller.connect()
+
+        self.simulated_dispatcher = Dispatcher(
+            port=0,
+            log=self.log,
+            controller=self.simulated_controller,
+        )
+        await self.simulated_dispatcher.start_task
+
+    async def stop_dispatcher(self):
+        """Stop the simulated dispatcher."""
+        if self.simulated_dispatcher is not None:
+            await self.simulated_dispatcher.close()
+            await self.simulated_controller.stop()
 
     async def do_closeVentGate(self, data):
         """Implement the ``closeVentGate`` command."""
