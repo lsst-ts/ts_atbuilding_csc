@@ -94,6 +94,9 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         # Task that waits while connecting to the TCP/IP controller.
         self.connect_task = utils.make_done_future()
 
+        # Task that waits for messages from the TCP/IP controller.
+        self.listen_task = utils.make_done_future()
+
         self.cmd_lock = asyncio.Lock()
 
         # Set up a dummy tcpip client, to connect to later.
@@ -111,6 +114,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
     async def handle_telemetry(self, message_json: dict[str, Any]) -> None:
         """Accepts a telemetry JSON message from the server and writes to the
         CSC's telemetry."""
+
         drive_frequency = message_json["data"]["tel_extraction_fan"]
         await self.tel_extractionFan.set_write(
             driveFrequency=drive_frequency,
@@ -120,7 +124,8 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         """Accepts an evt_ventGateState JSON message from the server and
         invokes the event in the CSC.
         """
-        state = VentGateState(message_json["data"])
+
+        state = [VentGateState(i) for i in message_json["data"]]
         await self.evt_ventGateState.set_write(state=state)
 
     async def handle_extraction_fan_drive_state(
@@ -129,6 +134,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         """Accepts an evt_extractionFanDriveState JSON message from the
         server and invokes the event in the CSC.
         """
+
         state = FanDriveState(message_json["data"])
         await self.evt_extractionFanDriveState.set_write(state=state)
 
@@ -138,6 +144,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         """Accepts an evt_extractionFanDriveFaultCode JSON message from the
         server and invokes the event in the CSC.
         """
+
         state = message_json["data"]
         await self.evt_extractionFanDriveFaultCode.set_write(state=state)
 
@@ -153,10 +160,16 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         await self.connect()
         await super().do_enable(data)
 
+    async def close(
+        self, exception: Exception | None = None, cancel_start: bool = True
+    ) -> None:
+        """Close the CSC."""
+        self.log.debug("CSC close")
+        await self.disconnect()
+        await super().close(exception=exception, cancel_start=cancel_start)
+
     async def connect(self):
         """Connect to the building RPi's TCP/IP port."""
-        print("connect()")
-        print(f"{type(self.tel_extractionFan)}")
         if self.simulation_mode == 1:
             await self.start_mock_ctrl()
             host = self.mock_ctrl.host
@@ -170,7 +183,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         if self.client.connected:
             raise RuntimeError("Already connected")
 
-        print(f"Try to connect to {host}:{port}...")
+        self.log.debug(f"Connecting to host={host}, port={port}")
         try:
             async with self.cmd_lock:
                 self.client = tcpip.Client(host=host, port=port, log=self.log)
@@ -190,8 +203,10 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         the mock controller, if running.
         """
         self.log.debug("disconnect")
+
         self.connect_task.cancel()
         await self.client.close()
+        self.listen_task.cancel()
         await self.stop_mock_ctrl()
 
     async def start_mock_ctrl(self):
@@ -241,7 +256,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         """Implement the ``setExtractionFanControlMode`` command."""
         self.assert_enabled()
         await self.run_command(
-            f"set_extraction_fan_control_mode {data.enableManualControlMode}"
+            f"set_extraction_fan_manual_control_mode {data.enableManualControlMode}"
         )
 
     async def do_startExtractionFan(self, data):
@@ -288,15 +303,15 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         to the queue for that command, to be handled by the method that
         called that command.
         """
-        print("listen_for_messages()")
         while self.client.connected:
             try:
                 # Receive a message and format it as JSON.
+                self.listen_task = asyncio.create_task(self.client.read_str())
                 message = await asyncio.wait_for(
-                    self.client.read_str(), timeout=SERVER_MESSAGE_TIMEOUT
+                    self.listen_task, timeout=SERVER_MESSAGE_TIMEOUT
                 )
+
                 message = message.strip()
-                print(f"message received by CSC: {message=}")
                 message_json = json.loads(message)
                 command = message_json["command"]
 
@@ -308,6 +323,10 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
                     # Response queues provide the response back to the
                     # command that sent them.
                     await self.response_queue[command].put(message_json)
+            except asyncio.TimeoutError:
+                self.log.debug("Timeout while waiting for server response.")
+            except asyncio.CancelledError:
+                pass
             except Exception:
                 self.log.exception("Exception while handling server response.")
 

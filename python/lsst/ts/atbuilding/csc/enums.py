@@ -20,11 +20,10 @@
 
 import enum
 
+
 class ErrorCode(enum.IntEnum):
     """CSC error codes when going to fault state."""
 
     TCPIP_CONNECT_ERROR = 1
     TCPIP_READ_ERROR = 2
     CANNOT_START_MOCK_CONTROLLER = 3
-
-
