@@ -111,8 +111,6 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         # Task that waits for messages from the TCP/IP controller.
         self.listen_task = utils.make_done_future()
 
-        self.cmd_lock = asyncio.Lock()
-
         # Set up a dummy tcpip client, to connect to later.
         self.client = tcpip.Client(host="", port=0, log=self.log)
 
@@ -204,12 +202,11 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
         self.log.debug(f"Connecting to host={host}, port={port}")
         try:
-            async with self.cmd_lock:
-                self.client = tcpip.Client(host=host, port=port, log=self.log)
-                await asyncio.wait_for(
-                    self.client.start_task, timeout=self.config.connection_timeout
-                )
-                asyncio.create_task(self.listen_for_messages())
+            self.client = tcpip.Client(host=host, port=port, log=self.log)
+            await asyncio.wait_for(
+                self.client.start_task, timeout=self.config.connection_timeout
+            )
+            asyncio.create_task(self.listen_for_messages())
             self.log.debug("connected")
         except Exception as e:
             err_msg = f"Could not open connection to host={host}, port={port}: {e!r}"
