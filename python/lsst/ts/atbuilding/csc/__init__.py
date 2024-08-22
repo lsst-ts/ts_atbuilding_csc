@@ -25,5 +25,3 @@ except ImportError:
     __version__ = "?"
 
 from .building_csc import ATBuildingCsc, run_atbuilding
-
-__all__ = ["__version__", "ATBuildingCsc", "run_atbuilding"]
