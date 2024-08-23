@@ -33,12 +33,6 @@ from .config_schema import CONFIG_SCHEMA
 from .enums import ErrorCode
 from .mock_controller import MockVentController
 
-RPI_AVAILABLE = True
-try:
-    from lsst.ts.vent.controller import Config, Controller, Dispatcher
-except ImportError:
-    RPI_AVAILABLE = False
-
 # Max time (sec) to wait for the mock controller to start.
 MOCK_CTRL_START_TIMEOUT = 2
 
@@ -75,13 +69,9 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
     * 0: regular operation
     * 1: mock controller
-    * 2: full simulation mode
     """
 
-    if RPI_AVAILABLE:
-        valid_simulation_modes = (0, 1, 2)
-    else:
-        valid_simulation_modes = (0, 1)
+    valid_simulation_modes = (0, 1)
     version = __version__
 
     def __init__(
@@ -102,9 +92,6 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         # Mock controller, used if simulation_mode is 1
         self.mock_ctrl = None
 
-        # Simulated vent controller, used if simulation_mode is 2
-        self.simulated_dispatcher = None
-
         # Task that waits while connecting to the TCP/IP controller.
         self.connect_task = utils.make_done_future()
 
@@ -112,7 +99,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         self.listen_task = utils.make_done_future()
 
         # Set up a dummy tcpip client, to connect to later.
-        self.client = tcpip.Client(host="", port=0, log=self.log)
+        self.client = None
 
         self.response_queue = defaultdict(asyncio.Queue)
 
@@ -125,7 +112,16 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
     async def handle_telemetry(self, message_json: dict[str, Any]) -> None:
         """Accepts a telemetry JSON message from the server and writes to the
-        CSC's telemetry."""
+        CSC's telemetry.
+
+        Parameters
+        ----------
+        message_json : dict[str, Any]
+            The message received from the server containing an
+            extractionFanDriveFaultCode event. The message must contain
+            a "data" key providing a dictionary of telemetry data
+            to emit.
+        """
 
         drive_frequency = message_json["data"]["tel_extraction_fan"]
         await self.tel_extractionFan.set_write(
@@ -135,6 +131,14 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
     async def handle_vent_gate_state(self, message_json: dict[str, Any]) -> None:
         """Accepts an evt_ventGateState JSON message from the server and
         invokes the event in the CSC.
+
+        Parameters
+        ----------
+        message_json : dict[str, Any]
+            The message received from the server containing an
+            ventGateState event. The message must contain
+            a "data" key providing the value of the state to write
+            into the event.
         """
 
         state = [VentGateState(i) for i in message_json["data"]]
@@ -145,6 +149,14 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
     ) -> None:
         """Accepts an evt_extractionFanDriveState JSON message from the
         server and invokes the event in the CSC.
+
+        Parameters
+        ----------
+        message_json : dict[str, Any]
+            The message received from the server containing an
+            extractionFanDriveState event. The message must contain
+            a "data" key providing the value of the state to write
+            into the event.
         """
 
         state = FanDriveState(message_json["data"])
@@ -155,6 +167,14 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
     ) -> None:
         """Accepts an evt_extractionFanDriveFaultCode JSON message from the
         server and invokes the event in the CSC.
+
+        Parameters
+        ----------
+        message_json : dict[str, Any]
+            The message received from the server containing an
+            extractionFanDriveFaultCode event. The message must contain
+            a "data" key providing the value of the state to write
+            into the event.
         """
 
         state = message_json["data"]
@@ -182,22 +202,17 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
     async def connect(self):
         """Connect to the building RPi's TCP/IP port."""
-        match self.simulation_mode:
-            case 0:
-                host = self.config.host
-                port = self.config.port
-            case 1:
-                await self.start_mock_ctrl()
-                host = self.mock_ctrl.host
-                port = self.mock_ctrl.port
-            case 2:
-                await self.start_dispatcher()
-                host = self.simulated_dispatcher.host
-                port = self.simulated_dispatcher.port
+        if self.simulation_mode == 0:
+            host = self.config.host
+            port = self.config.port
+        elif self.simulation_mode == 1:
+            await self.start_mock_ctrl()
+            host = self.mock_ctrl.host
+            port = self.mock_ctrl.port
 
         if self.config is None:
             raise RuntimeError("Not yet configured")
-        if self.client.connected:
+        if self.client is not None and self.client.connected:
             raise RuntimeError("Already connected")
 
         self.log.debug(f"Connecting to host={host}, port={port}")
@@ -220,11 +235,10 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         """
         self.log.debug("disconnect")
 
-        self.connect_task.cancel()
         await self.client.close()
+        self.connect_task.cancel()
         self.listen_task.cancel()
         await self.stop_mock_ctrl()
-        await self.stop_dispatcher()
 
     async def start_mock_ctrl(self):
         """Start the controller with the mock object as server."""
@@ -246,28 +260,6 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         self.mock_ctrl = None
         if mock_ctrl is not None:
             await mock_ctrl.close()
-
-    async def start_dispatcher(self):
-        """Start the simulated dispatcher."""
-        assert self.simulation_mode == 2
-        cfg = Config()
-        cfg.hostname = "localhost"
-        cfg.port = 26034  # Set in simulator_setup.json
-        self.simulated_controller = Controller(cfg, simulate=True)
-        await self.simulated_controller.connect()
-
-        self.simulated_dispatcher = Dispatcher(
-            port=0,
-            log=self.log,
-            controller=self.simulated_controller,
-        )
-        await self.simulated_dispatcher.start_task
-
-    async def stop_dispatcher(self):
-        """Stop the simulated dispatcher."""
-        if self.simulated_dispatcher is not None:
-            await self.simulated_dispatcher.close()
-            await self.simulated_controller.stop()
 
     async def do_closeVentGate(self, data):
         """Implement the ``closeVentGate`` command."""
@@ -312,6 +304,11 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         """Sends a command to the RPi. It writes to the TCP port,
         and then monitors an `asyncio.Queue`. The response is
         written to the queue by the `listen_for_messages` method.
+
+        Parameters
+        ----------
+        command : str
+            The command string to send to the server.
         """
         await asyncio.wait_for(
             self.client.write_str(command + "\r\n"), timeout=TCP_TIMEOUT
@@ -346,9 +343,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             try:
                 # Receive a message and format it as JSON.
                 self.listen_task = asyncio.create_task(self.client.read_str())
-                message = await asyncio.wait_for(
-                    self.listen_task, timeout=SERVER_MESSAGE_TIMEOUT
-                )
+                message = await self.listen_task
 
                 message = message.strip()
                 message_json = json.loads(message)
@@ -362,10 +357,9 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
                     # Response queues provide the response back to the
                     # command that sent them.
                     await self.response_queue[command].put(message_json)
-            except asyncio.TimeoutError:
-                self.log.debug("Timeout while waiting for server response.")
             except asyncio.CancelledError:
-                pass
+                # Cancelled listen_task for disconnect
+                break
             except Exception:
                 self.log.exception("Exception while handling server response.")
 

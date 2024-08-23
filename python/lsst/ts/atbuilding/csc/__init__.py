@@ -25,3 +25,4 @@ except ImportError:
     __version__ = "?"
 
 from .building_csc import ATBuildingCsc, run_atbuilding
+from .config_schema import CONFIG_SCHEMA

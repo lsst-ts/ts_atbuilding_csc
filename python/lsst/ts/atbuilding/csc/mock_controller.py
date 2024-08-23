@@ -27,35 +27,8 @@ import traceback
 from collections import deque
 
 from lsst.ts import tcpip, utils
+from lsst.ts.vent.controller import cast_string_to_type
 from lsst.ts.xml.enums.ATBuilding import FanDriveState, VentGateState
-
-
-def _cast_string_to_type(new_type: type, value: str):
-    """Converts the value string to the specified type. In the case of boolean,
-    "True" or "T" or "1" is ``True`` and everything else is ``False``. Other
-    cases are handled by cast.
-
-    Parameters
-    ----------
-    t: type
-        The type that value should be converted to.
-
-    value: str
-        The value to be converted.
-
-    Raises
-    ------
-    ValueError
-        If the value cannot be converted to the specified type.
-    """
-
-    if new_type is bool:  # Boolean is a special case
-        if value.lower() in ("true", "t", "1"):
-            return True
-        if value.lower() in ("false", "f", "0"):
-            return False
-        raise ValueError(f"Expected bool value but got {value}")
-    return new_type(value)
 
 
 class MockVentController(tcpip.OneClientReadLoopServer):
@@ -153,7 +126,7 @@ class MockVentController(tcpip.OneClientReadLoopServer):
 
         try:
             # Convert the arguments to their expected type.
-            args = [_cast_string_to_type(t, arg) for t, arg in zip(types, args)]
+            args = [cast_string_to_type(t, arg) for t, arg in zip(types, args)]
             # Call the method with the specified arguments.
             await getattr(self, command)(*args)
             # Send back a success response.

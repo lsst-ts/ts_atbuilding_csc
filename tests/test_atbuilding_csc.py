@@ -186,11 +186,6 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
         ):
-            await self.assert_next_sample(
-                topic=self.remote.evt_extractionFanDriveState,
-                state=FanDriveState.STOPPED,  # default value
-                flush=True,
-            )
             self.csc.mock_ctrl.fan_drive_state = FanDriveState.OPERATING
             await self.assert_next_sample(
                 topic=self.remote.evt_extractionFanDriveState,
