@@ -1,7 +1,7 @@
-{% set version = load_setuptools_scm_version() %}
+{% set data = load_setup_py_data() %}
 package:
   name: ts-atbuilding-csc
-  version: {{ version }}
+  version: {{ data.get('version') }}
 
 source:
   path: ../
