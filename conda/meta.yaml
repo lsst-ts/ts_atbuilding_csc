@@ -18,6 +18,7 @@ test:
     - ts-salobj {{ salobj_version }}
     - ts-xml
     - ts-tcpip
+    - ts-atbuilding-vents
   source_files:
     - python
     - tests
@@ -37,3 +38,4 @@ requirements:
     - ts-salobj
     - ts-tcpip
     - ts-xml
+    - ts-atbuilding-vents
