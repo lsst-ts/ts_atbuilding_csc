@@ -1,7 +1,7 @@
 {% set version = load_setuptools_scm_version() %}
 package:
   name: ts-atbuilding-csc
-  version: {{ version )}}
+  version: {{ version }}
 
 source:
   path: ../
