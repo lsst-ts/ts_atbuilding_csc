@@ -1,14 +1,14 @@
-{% set data= load_setup_py_data() %}
+{% set version = load_setuptools_scm_version() %}
 package:
   name: ts-atbuilding-csc
-  version: {{ data.get('version') }}
+  version: {{ version )}}
 
 source:
   path: ../
 
 build:
   noarch: python
-  script: {{ PYTHON }} -m pip install --no-deps --ignore-installed .
+  script: {{ PYTHON }} -m pip install --no-deps --ignore-installed --no-build-isolation .
   entry_points:
     - run_atbuilding = lsst.ts.atbuilding.csc:run_atbuilding
 
@@ -31,14 +31,9 @@ requirements:
     - pip
     - setuptools_scm
     - setuptools
-  build:
-    - python {{ python }}
-    - setuptools_scm
-    - setuptools
   run:
     - python {{ python }}
     - setuptools
-    - setuptools_scm
     - ts-salobj
     - ts-tcpip
     - ts-xml
