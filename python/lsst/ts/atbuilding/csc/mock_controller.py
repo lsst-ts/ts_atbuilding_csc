@@ -71,17 +71,23 @@ class MockVentController(tcpip.OneClientReadLoopServer):
         self.TELEMETRY_INTERVAL = 10
 
         super().__init__(
-            port=port, log=log, connect_callback=self.on_connect, terminator=b"\r"
+            port=port,
+            log=log,
+            connect_callback=self.on_connect,
         )
 
     async def respond(self, message: str) -> None:
-        await self.write_str(message + "\r\n")
+        await self.write_str(message)
 
     async def read_and_dispatch(self) -> None:
         """Read, parse and execute a command, and send a response."""
-        data = await self.read_str()
-        data = data.strip()
-        if not data:
+        try:
+            data = await self.read_str()
+            data = data.strip()
+            if not data:
+                return
+        except asyncio.IncompleteReadError:
+            self.log.exception("IncompleteReadError while reading message from CSC")
             return
 
         self.log.debug(f"Received command: {data!r}")

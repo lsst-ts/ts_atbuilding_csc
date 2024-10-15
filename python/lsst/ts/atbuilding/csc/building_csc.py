@@ -310,9 +310,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         command : str
             The command string to send to the server.
         """
-        await asyncio.wait_for(
-            self.client.write_str(command + "\r\n"), timeout=TCP_TIMEOUT
-        )
+        await asyncio.wait_for(self.client.write_str(command), timeout=TCP_TIMEOUT)
 
         # Wait for a response
         command_name = command.split()[0]
@@ -357,6 +355,9 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
                     # Response queues provide the response back to the
                     # command that sent them.
                     await self.response_queue[command].put(message_json)
+            except asyncio.IncompleteReadError:
+                # Incomplete read implies disconnect
+                break
             except asyncio.CancelledError:
                 # Cancelled listen_task for disconnect
                 break
