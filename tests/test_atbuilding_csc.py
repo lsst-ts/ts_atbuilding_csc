@@ -39,6 +39,11 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
         ):
+            await self.assert_next_sample(
+                topic=self.remote.evt_ventGateState,
+                state=[VentGateState.CLOSED] * 4,
+                flush=False,
+            )
             await self.remote.cmd_openVentGate.set_start(gate=[0, -1, -1, -1])
             await asyncio.sleep(1)
             await self.assert_next_sample(
@@ -52,11 +57,16 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
         ):
+            await self.assert_next_sample(
+                topic=self.remote.evt_ventGateState,
+                state=[VentGateState.CLOSED] * 4,
+                flush=False,
+            )
             await self.remote.cmd_openVentGate.set_start(gate=[0, 1, 2, 3])
             await self.assert_next_sample(
                 topic=self.remote.evt_ventGateState,
                 state=[VentGateState.OPENED] * 4,
-                flush=True,
+                flush=False,
             )
 
     async def test_close_one_vent(self):
@@ -189,8 +199,12 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
         ):
+            await self.assert_next_sample(
+                topic=self.remote.evt_extractionFanDriveState,
+                state=FanDriveState.STOPPED,
+                flush=False,
+            )
             self.csc.mock_ctrl.fan_drive_state = FanDriveState.OPERATING
-            await asyncio.sleep(1)
             await self.assert_next_sample(
                 topic=self.remote.evt_extractionFanDriveState,
                 state=FanDriveState.OPERATING,
