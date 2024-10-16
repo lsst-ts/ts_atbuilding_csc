@@ -1,0 +1,2 @@
+@Library('JenkinsShared')_
+CondaPipeline(["ts_config_attcs"], "ts-atbuilding-csc", "lsst.ts.atbuilding.csc", "noarch")
