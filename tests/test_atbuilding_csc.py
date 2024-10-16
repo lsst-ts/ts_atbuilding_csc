@@ -27,14 +27,16 @@ from lsst.ts.xml.enums.ATBuilding import FanDriveState, VentGateState
 
 
 class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
-    def basic_make_csc(self, initial_state, config_dir, simulation_mode):
+    def basic_make_csc(
+        self, initial_state: salobj.State, config_dir: str | None, simulation_mode: int
+    ) -> csc.ATBuildingCsc:
         return csc.ATBuildingCsc(
             initial_state=initial_state,
             config_dir=config_dir,
             simulation_mode=simulation_mode,
         )
 
-    async def test_open_one_vent(self):
+    async def test_open_one_vent(self) -> None:
         """Use openVentGate to open one vent."""
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
@@ -52,7 +54,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
                 flush=False,
             )
 
-    async def test_open_vents(self):
+    async def test_open_vents(self) -> None:
         """Use openVentGate to open all vents."""
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
@@ -69,7 +71,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
                 flush=False,
             )
 
-    async def test_close_one_vent(self):
+    async def test_close_one_vent(self) -> None:
         """Use closeVentGate to close one vent."""
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
@@ -87,7 +89,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
                 flush=True,
             )
 
-    async def test_close_vents(self):
+    async def test_close_vents(self) -> None:
         """Use closeVentGate to close all vents."""
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
@@ -106,7 +108,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
                 flush=False,
             )
 
-    async def test_reset_extraction_fan_drive(self):
+    async def test_reset_extraction_fan_drive(self) -> None:
         """Use resetExtractionFanDrive to reset the extraction fan drive."""
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
@@ -115,7 +117,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
             await self.remote.cmd_resetExtractionFanDrive.set_start()
             self.assertTrue(self.csc.mock_ctrl.extraction_fan_drive_was_reset)
 
-    async def test_set_extraction_fan_drive_freq(self):
+    async def test_set_extraction_fan_drive_freq(self) -> None:
         """Use setExtractionFanDriveFreq to set the extraction fan drive
         frequency.
         """
@@ -127,7 +129,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
             )
             self.assertAlmostEqual(self.csc.mock_ctrl.fan_frequency, 12.5)
 
-    async def test_set_extraction_fan_manual(self):
+    async def test_set_extraction_fan_manual(self) -> None:
         """Use setExtractionFanManualControlMode to set the extraction
         fan drive to manual control mode.
         """
@@ -144,7 +146,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
             )
             self.assertTrue(self.csc.mock_ctrl.manual_control_mode)
 
-    async def test_start_extraction_fan(self):
+    async def test_start_extraction_fan(self) -> None:
         """Use startExtractionFan to start the extraction fan."""
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
@@ -153,7 +155,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
             await self.remote.cmd_startExtractionFan.set_start()
             self.assertAlmostEqual(self.csc.mock_ctrl.fan_frequency, 50)
 
-    async def test_stop_extraction_fan(self):
+    async def test_stop_extraction_fan(self) -> None:
         """Use stopExtractionFan to stop the extraction fan."""
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
@@ -162,7 +164,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
             await self.remote.cmd_stopExtractionFan.set_start()
             self.assertAlmostEqual(self.csc.mock_ctrl.fan_frequency, 0)
 
-    async def test_telemetry(self):
+    async def test_telemetry(self) -> None:
         """Test that the telemetry is published."""
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
@@ -177,7 +179,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
             ).driveFrequency
             self.assertAlmostEqual(driveFrequency, 10)
 
-    async def test_drive_fault_code(self):
+    async def test_drive_fault_code(self) -> None:
         """Test the fan drive fault code event."""
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
@@ -194,7 +196,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
                 flush=False,
             )
 
-    async def test_drive_state(self):
+    async def test_drive_state(self) -> None:
         """Test the fan drive state event."""
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1

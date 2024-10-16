@@ -40,6 +40,7 @@ class MockVentController(tcpip.OneClientReadLoopServer):
         self.log = log
         log.info("MockVentController.__init__")
 
+        self.dispatch_dict: dict[str, list[type]]
         self.dispatch_dict = {
             "close_vent_gate": [int, int, int, int],
             "open_vent_gate": [int, int, int, int],
