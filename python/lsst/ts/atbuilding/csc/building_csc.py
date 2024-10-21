@@ -23,7 +23,7 @@ __all__ = ["ATBuildingCsc", "run_atbuilding"]
 import asyncio
 import json
 from collections import defaultdict
-from typing import Any
+from typing import Any, DefaultDict
 
 from lsst.ts import salobj, tcpip, utils
 from lsst.ts.xml.enums.ATBuilding import FanDriveState, VentGateState
@@ -76,9 +76,9 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
     def __init__(
         self,
-        config_dir=None,
-        initial_state=salobj.State.STANDBY,
-        simulation_mode=0,
+        config_dir: str | None = None,
+        initial_state: salobj.State = salobj.State.STANDBY,
+        simulation_mode: int = 0,
     ):
         super().__init__(
             name="ATBuilding",
@@ -90,7 +90,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         )
 
         # Mock controller, used if simulation_mode is 1
-        self.mock_ctrl = None
+        self.mock_ctrl: MockVentController | None = None
 
         # Task that waits while connecting to the TCP/IP controller.
         self.connect_task = utils.make_done_future()
@@ -99,9 +99,11 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         self.listen_task = utils.make_done_future()
 
         # Set up a dummy tcpip client, to connect to later.
-        self.client = None
+        self.client: tcpip.Client | None = None
 
-        self.response_queue = defaultdict(asyncio.Queue)
+        self.response_queue: DefaultDict[str, asyncio.Queue] = defaultdict(
+            asyncio.Queue
+        )
 
         self.callbacks = {
             "telemetry": self.handle_telemetry,
@@ -181,10 +183,10 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         await self.evt_extractionFanDriveFaultCode.set_write(state=state)
 
     @staticmethod
-    def get_config_pkg():
+    def get_config_pkg() -> str:
         return "ts_config_attcs"
 
-    async def configure(self, config):
+    async def configure(self, config: Any) -> None:
         self.config = config
 
     async def do_enable(self, data: salobj.type_hints.BaseMsgType) -> None:
@@ -200,13 +202,14 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         await self.disconnect()
         await super().close(exception=exception, cancel_start=cancel_start)
 
-    async def connect(self):
+    async def connect(self) -> None:
         """Connect to the building RPi's TCP/IP port."""
         if self.simulation_mode == 0:
             host = self.config.host
             port = self.config.port
         elif self.simulation_mode == 1:
             await self.start_mock_ctrl()
+            assert self.mock_ctrl is not None
             host = self.mock_ctrl.host
             port = self.mock_ctrl.port
 
@@ -229,18 +232,19 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             await self.fault(code=ErrorCode.TCPIP_CONNECT_ERROR, report=err_msg)
             return
 
-    async def disconnect(self):
+    async def disconnect(self) -> None:
         """Disconnect from the TCP/IP controller, if connected, and stop
         the mock controller, if running.
         """
         self.log.debug("disconnect")
 
-        await self.client.close()
+        if self.client is not None:
+            await self.client.close()
         self.connect_task.cancel()
         self.listen_task.cancel()
         await self.stop_mock_ctrl()
 
-    async def start_mock_ctrl(self):
+    async def start_mock_ctrl(self) -> None:
         """Start the controller with the mock object as server."""
         try:
             assert self.simulation_mode == 1
@@ -254,48 +258,54 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             await self.fault(code=ErrorCode.MOCK_CTRL_START_ERROR, report=err_msg)
             raise
 
-    async def stop_mock_ctrl(self):
+    async def stop_mock_ctrl(self) -> None:
         """Stop the mock controller."""
         mock_ctrl = self.mock_ctrl
         self.mock_ctrl = None
         if mock_ctrl is not None:
             await mock_ctrl.close()
 
-    async def do_closeVentGate(self, data):
+    async def do_closeVentGate(self, data: salobj.type_hints.BaseMsgType) -> None:
         """Implement the ``closeVentGate`` command."""
         self.assert_enabled()
         args = " ".join([str(i) for i in data.gate])
         await self.run_command(f"close_vent_gate {args}")
 
-    async def do_openVentGate(self, data):
+    async def do_openVentGate(self, data: salobj.type_hints.BaseMsgType) -> None:
         """Implement the ``openVentGate`` command."""
         self.assert_enabled()
         args = " ".join([str(i) for i in data.gate])
         await self.run_command(f"open_vent_gate {args}")
 
-    async def do_resetExtractionFanDrive(self, data):
+    async def do_resetExtractionFanDrive(
+        self, data: salobj.type_hints.BaseMsgType
+    ) -> None:
         """Implement the ``resetExtractionFanDrive`` command."""
         self.assert_enabled()
         await self.run_command("reset_extraction_fan_drive")
 
-    async def do_setExtractionFanDriveFreq(self, data):
+    async def do_setExtractionFanDriveFreq(
+        self, data: salobj.type_hints.BaseMsgType
+    ) -> None:
         """Implement the ``setExtractionFanDriveFreq`` command."""
         self.assert_enabled()
         await self.run_command(f"set_extraction_fan_drive_freq {data.targetFrequency}")
 
-    async def do_setExtractionFanManualControlMode(self, data):
+    async def do_setExtractionFanManualControlMode(
+        self, data: salobj.type_hints.BaseMsgType
+    ) -> None:
         """Implement the ``setExtractionFanControlMode`` command."""
         self.assert_enabled()
         await self.run_command(
             f"set_extraction_fan_manual_control_mode {data.enableManualControlMode}"
         )
 
-    async def do_startExtractionFan(self, data):
+    async def do_startExtractionFan(self, data: salobj.type_hints.BaseMsgType) -> None:
         """Implement the ``startExtractionFan`` command."""
         self.assert_enabled()
         await self.run_command("start_extraction_fan")
 
-    async def do_stopExtractionFan(self, data):
+    async def do_stopExtractionFan(self, data: salobj.type_hints.BaseMsgType) -> None:
         """Implement the ``stopExtractionFan`` command."""
         self.assert_enabled()
         await self.run_command("stop_extraction_fan")
@@ -310,9 +320,8 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         command : str
             The command string to send to the server.
         """
-        await asyncio.wait_for(
-            self.client.write_str(command + "\r\n"), timeout=TCP_TIMEOUT
-        )
+        assert self.client is not None
+        await asyncio.wait_for(self.client.write_str(command), timeout=TCP_TIMEOUT)
 
         # Wait for a response
         command_name = command.split()[0]
@@ -332,13 +341,14 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
         return response
 
-    async def listen_for_messages(self):
+    async def listen_for_messages(self) -> None:
         """Receives messages from the RPi. If the message contains an event
         (command starts with "evt_") or telemetry (command is "telemetry") it
         passes the message to the appropriate handler. Otherwise, it sends it
         to the queue for that command, to be handled by the method that
         called that command.
         """
+        assert self.client is not None
         while self.client.connected:
             try:
                 # Receive a message and format it as JSON.
@@ -357,6 +367,9 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
                     # Response queues provide the response back to the
                     # command that sent them.
                     await self.response_queue[command].put(message_json)
+            except asyncio.IncompleteReadError:
+                # Incomplete read implies disconnect
+                break
             except asyncio.CancelledError:
                 # Cancelled listen_task for disconnect
                 break
@@ -364,6 +377,6 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
                 self.log.exception("Exception while handling server response.")
 
 
-def run_atbuilding():
+def run_atbuilding() -> None:
     """Run the ATBuilding CSC."""
     asyncio.run(ATBuildingCsc.amain(index=None))

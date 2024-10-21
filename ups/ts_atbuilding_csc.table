@@ -4,6 +4,9 @@
 #   the "sconsUtils" package.
 setupRequired(sconsUtils)
 
+# ts_atbuilding_vents required for `cast_string_to_type` function.
+setupRequired(ts_vent_controller)
+
 # The following is boilerplate for all packages.
 # See https://dmtn-001.lsst.io for details on LSST_LIBRARY_PATH.
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)

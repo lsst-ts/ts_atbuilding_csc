@@ -1,0 +1,41 @@
+{% set data = load_setup_py_data() %}
+package:
+  name: ts-atbuilding-csc
+  version: {{ data.get('version') }}
+
+source:
+  path: ../
+
+build:
+  noarch: python
+  script: {{ PYTHON }} -m pip install --no-deps --ignore-installed --no-build-isolation .
+  entry_points:
+    - run_atbuilding = lsst.ts.atbuilding.csc:run_atbuilding
+
+test:
+  requires:
+    - ts-conda-build =0.4
+    - ts-salobj {{ salobj_version }}
+    - ts-xml
+    - ts-tcpip
+    - ts-atbuilding-vents
+  source_files:
+    - python
+    - tests
+    - pyproject.toml
+  commands:
+    - pytest
+
+requirements:
+  host:
+    - python  {{ python }}
+    - pip
+    - setuptools_scm
+    - setuptools
+  run:
+    - python {{ python }}
+    - setuptools
+    - ts-salobj
+    - ts-tcpip
+    - ts-xml
+    - ts-atbuilding-vents
