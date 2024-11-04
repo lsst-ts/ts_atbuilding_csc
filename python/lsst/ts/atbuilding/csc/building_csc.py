@@ -22,6 +22,7 @@ __all__ = ["ATBuildingCsc", "run_atbuilding"]
 
 import asyncio
 import json
+import logging
 from collections import defaultdict
 from typing import Any, DefaultDict
 
@@ -208,6 +209,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             host = self.config.host
             port = self.config.port
         elif self.simulation_mode == 1:
+            self.log.setLevel(logging.DEBUG)
             await self.start_mock_ctrl()
             assert self.mock_ctrl is not None
             host = self.mock_ctrl.host
