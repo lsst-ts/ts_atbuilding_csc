@@ -72,6 +72,7 @@ class MockVentController(tcpip.OneClientReadLoopServer):
         self.TELEMETRY_INTERVAL = 10
 
         super().__init__(
+            host="127.0.0.1",
             port=port,
             log=log,
             connect_callback=self.on_connect,
