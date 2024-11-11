@@ -94,11 +94,11 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
         ):
+            self.remote.evt_ventGateState.flush()
             self.csc.mock_ctrl.vent_states = [VentGateState.OPENED] * 4
             await self.assert_next_sample(
                 topic=self.remote.evt_ventGateState,
                 state=[VentGateState.OPENED] * 4,
-                flush=True,
             )
             await self.remote.cmd_closeVentGate.set_start(gate=[0, 1, 2, 3])
             await asyncio.sleep(1)
