@@ -90,6 +90,14 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             simulation_mode=simulation_mode,
         )
 
+        ch = logging.StreamHandler()
+        formatter = logging.Formatter("%(asctime)s [%(levelname)s]: %(message)s")
+        ch.setFormatter(formatter)
+        self.log.addHandler(ch)
+        self.log.info(
+            f"ATBuildingCsc: {config_dir=}, {initial_state.name=} {simulation_mode=}"
+        )
+
         # Mock controller, used if simulation_mode is 1
         self.mock_ctrl: MockVentController | None = None
 
