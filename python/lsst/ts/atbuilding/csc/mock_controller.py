@@ -59,6 +59,7 @@ class MockVentController(tcpip.OneClientReadLoopServer):
         #  * Fault codes
 
         self.fan_frequency = 0.0  # Hz, 0.0 is off
+        self.drive_voltage = 382.9  # Volts
         self.vent_states = [VentGateState.CLOSED] * 4
         self.manual_control_mode = True
         self.fault_codes = deque([22] * 8, maxlen=8)
@@ -298,6 +299,7 @@ class MockVentController(tcpip.OneClientReadLoopServer):
                 self.telemetry_count = self.TELEMETRY_INTERVAL
                 telemetry = {
                     "tel_extraction_fan": self.fan_frequency,
+                    "tel_drive_voltage": self.drive_voltage,
                 }
                 await self.respond(
                     json.dumps(
