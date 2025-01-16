@@ -44,6 +44,7 @@ class MockVentController(tcpip.OneClientReadLoopServer):
         self.dispatch_dict = {
             "close_vent_gate": [int, int, int, int],
             "open_vent_gate": [int, int, int, int],
+            "get_fan_drive_max_frequency": [],
             "reset_extraction_fan_drive": [],
             "set_extraction_fan_drive_freq": [float],
             "set_extraction_fan_manual_control_mode": [bool],
@@ -59,6 +60,7 @@ class MockVentController(tcpip.OneClientReadLoopServer):
         #  * Fault codes
 
         self.fan_frequency = 0.0  # Hz, 0.0 is off
+        self.max_frequency = 50.0  # Hz
         self.drive_voltage = 382.9  # Volts
         self.vent_states = [VentGateState.CLOSED] * 4
         self.manual_control_mode = True
@@ -136,12 +138,13 @@ class MockVentController(tcpip.OneClientReadLoopServer):
             # Convert the arguments to their expected type.
             args = [cast_string_to_type(t, arg) for t, arg in zip(types, args)]
             # Call the method with the specified arguments.
-            await getattr(self, command)(*args)
+            return_value = await getattr(self, command)(*args)
             # Send back a success response.
             await self.respond(
                 json.dumps(
                     dict(
                         command=command,
+                        return_value=return_value,
                         error=0,
                         exception_name="",
                         message="",
@@ -197,6 +200,9 @@ class MockVentController(tcpip.OneClientReadLoopServer):
                     self._set_vent_state(gate, VentGateState.OPENED)
                 )
 
+    async def get_fan_drive_max_frequency(self) -> float:
+        return self.max_frequency
+
     async def reset_extraction_fan_drive(self) -> None:
         self.extraction_fan_drive_was_reset = True
 
@@ -209,7 +215,7 @@ class MockVentController(tcpip.OneClientReadLoopServer):
         self.manual_control_mode = enable_manual_control_mode
 
     async def start_extraction_fan(self) -> None:
-        self.fan_frequency = 50.0
+        self.fan_frequency = self.max_frequency
 
     async def stop_extraction_fan(self) -> None:
         self.fan_frequency = 0.0

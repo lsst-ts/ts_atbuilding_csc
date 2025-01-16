@@ -174,6 +174,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
             ).driveFrequency
             self.assertAlmostEqual(driveFrequency, 0)
             self.csc.mock_ctrl.fan_frequency = 10
+            await asyncio.sleep(2)
             driveFrequency = (
                 await self.remote.tel_extractionFan.next(flush=True)
             ).driveFrequency

@@ -250,7 +250,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
                     )
                     if "return_value" in max_freq_response:
                         max_frequency = max_freq_response["return_value"]
-                        self.evt_maximumDriveFrequency.set_write(
+                        await self.evt_maximumDriveFrequency.set_write(
                             driveFrequency=max_frequency,
                         )
                         self.log.debug("Emitted maximumDriveFrequency event")
@@ -262,6 +262,8 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
                         )
                     else:
                         raise
+            else:
+                self.log.debug("No maximumDriveFrequency event.")
 
         except Exception as e:
             err_msg = f"Could not open connection to host={host}, port={port}: {e!r}"
