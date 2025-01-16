@@ -74,11 +74,22 @@ class MockVentController(tcpip.OneClientReadLoopServer):
         self.telemetry_count = 0
         self.TELEMETRY_INTERVAL = 10
 
+        self.use_new_commands = True
+
         super().__init__(
             port=port,
             log=log,
             connect_callback=self.on_connect,
         )
+
+    def delete_new_commands(self) -> None:
+        """Removes commands that were added after initial deployment.
+
+        This method should be used for testing compatibility of the
+        CSC with older versions of the controller.
+        """
+        del self.dispatch_dict["get_fan_drive_max_frequency"]
+        self.use_new_commands = False
 
     async def respond(self, message: str) -> None:
         await self.write_str(message)
@@ -305,8 +316,10 @@ class MockVentController(tcpip.OneClientReadLoopServer):
                 self.telemetry_count = self.TELEMETRY_INTERVAL
                 telemetry = {
                     "tel_extraction_fan": self.fan_frequency,
-                    "tel_drive_voltage": self.drive_voltage,
                 }
+                if self.use_new_commands:
+                    telemetry["tel_drive_voltage"] = self.drive_voltage
+                self.log.error(f"{telemetry=}")
                 await self.respond(
                     json.dumps(
                         dict(

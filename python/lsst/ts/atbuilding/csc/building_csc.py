@@ -127,6 +127,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
         drive_frequency = message_json["data"]["tel_extraction_fan"]
         drive_voltage = None
+        self.log.error(f"{message_json['data']=}")
         if "tel_drive_voltage" in message_json["data"]:
             drive_voltage = message_json["data"]["tel_drive_voltage"]
         await self.tel_extractionFan.set_write(
@@ -263,7 +264,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
                     else:
                         raise
             else:
-                self.log.debug("No maximumDriveFrequency event.")
+                self.log.info("No maximumDriveFrequency event.")
 
         except Exception as e:
             err_msg = f"Could not open connection to host={host}, port={port}: {e!r}"
@@ -285,6 +286,9 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
     async def start_mock_ctrl(self) -> None:
         """Start the controller with the mock object as server."""
+        if self.mock_ctrl is not None:
+            return
+
         try:
             assert self.simulation_mode == 1
             self.mock_ctrl = MockVentController(port=0, log=self.log)
