@@ -244,14 +244,24 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             self.log.debug("connected")
 
             if hasattr(self, "evt_maximumDriveFrequency"):
-                max_freq_response = await self.run_command(
-                    "get_fan_drive_max_frequency"
-                )
-                if max_freq_response is not None and max_freq_response["error"] == 0:
-                    max_frequency = max_freq_response["return_value"]
-                    self.evt_maximumDriveFrequency.set_write(
-                        driveFrequency=max_frequency,
+                try:
+                    max_freq_response = await self.run_command(
+                        "get_fan_drive_max_frequency"
                     )
+                    if "return_value" in max_freq_response:
+                        max_frequency = max_freq_response["return_value"]
+                        self.evt_maximumDriveFrequency.set_write(
+                            driveFrequency=max_frequency,
+                        )
+                        self.log.debug("Emitted maximumDriveFrequency event")
+
+                except salobj.ExpectedError as exc:
+                    if "NotImplementedError" in str(exc):
+                        self.log.debug(
+                            "get_fan_drive_max_frequency not implemented in controller."
+                        )
+                    else:
+                        raise
 
         except Exception as e:
             err_msg = f"Could not open connection to host={host}, port={port}: {e!r}"
