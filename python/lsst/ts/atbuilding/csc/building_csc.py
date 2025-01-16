@@ -127,7 +127,6 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
         drive_frequency = message_json["data"]["tel_extraction_fan"]
         drive_voltage = None
-        self.log.error(f"{message_json['data']=}")
         if "tel_drive_voltage" in message_json["data"]:
             drive_voltage = message_json["data"]["tel_drive_voltage"]
         await self.tel_extractionFan.set_write(

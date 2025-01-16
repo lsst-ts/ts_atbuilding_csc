@@ -319,7 +319,6 @@ class MockVentController(tcpip.OneClientReadLoopServer):
                 }
                 if self.use_new_commands:
                     telemetry["tel_drive_voltage"] = self.drive_voltage
-                self.log.error(f"{telemetry=}")
                 await self.respond(
                     json.dumps(
                         dict(
