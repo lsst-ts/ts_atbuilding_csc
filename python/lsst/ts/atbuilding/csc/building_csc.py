@@ -126,25 +126,16 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         """
 
         drive_frequency = message_json["data"]["tel_extraction_fan"]
-        drive_voltage = None
-        if "tel_drive_voltage" in message_json["data"]:
-            drive_voltage = message_json["data"]["tel_drive_voltage"]
-        await self.tel_extractionFan.set_write(
-            driveFrequency=drive_frequency,
-        )
+        drive_voltage = message_json["data"].get("tel_drive_voltage", None)
 
         # Check whether driveVoltage is part of the extractionFan telemetry.
         topic_info = self.salinfo.metadata.topic_info["extractionFan"]
-        drive_voltage_in_telemetry = "driveVoltage" in topic_info.field_info.keys()
-        if drive_voltage_in_telemetry and drive_voltage is not None:
-            await self.tel_extractionFan.set_write(
-                driveFrequency=drive_frequency,
-                driveVoltage=drive_voltage,
-            )
-        else:
-            await self.tel_extractionFan.set_write(
-                driveFrequency=drive_frequency,
-            )
+        extraction_fan_payload = dict(driveFrequency=drive_frequency)
+
+        if "driveVoltage" in topic_info.field_info and drive_voltage is not None:
+            extraction_fan_payload["driveVoltage"] = drive_voltage
+
+        await self.tel_extractionFan.set_write(**extraction_fan_payload)
 
     async def handle_vent_gate_state(self, message_json: dict[str, Any]) -> None:
         """Accepts an evt_ventGateState JSON message from the server and
