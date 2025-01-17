@@ -125,6 +125,8 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             to emit.
         """
 
+        # TODO (DM-48497): Remove backwards compatibility with xml 22.1.
+
         drive_frequency = message_json["data"]["tel_extraction_fan"]
         drive_voltage = message_json["data"].get("tel_drive_voltage", None)
 
@@ -234,6 +236,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             asyncio.create_task(self.listen_for_messages())
             self.log.debug("connected")
 
+            # TODO (DM-48497): Remove backwards compatibility with xml 22.1.
             if hasattr(self, "evt_maximumDriveFrequency"):
                 try:
                     max_freq_response = await self.run_command(
