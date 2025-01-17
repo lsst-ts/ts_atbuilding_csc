@@ -164,20 +164,57 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
             await self.remote.cmd_stopExtractionFan.set_start()
             self.assertAlmostEqual(self.csc.mock_ctrl.fan_frequency, 0)
 
-    async def test_telemetry(self) -> None:
-        """Test that the telemetry is published."""
+    async def test_old_telemetry(self) -> None:
+        """Test that the telemetry is published with the old controller."""
         async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
+            initial_state=salobj.State.DISABLED, config_dir=None, simulation_mode=1
         ):
+            await self.assert_next_summary_state(salobj.State.DISABLED)
+
+            # Delete the new commands from the mock controller.
+            await self.csc.start_mock_ctrl()
+            self.csc.mock_ctrl.delete_new_commands()
+
+            # Set the CSC to ENABLED.
+            await self.remote.cmd_enable.start()
+            await self.assert_next_summary_state(salobj.State.ENABLED)
+
+            # Now ready to go with old controller...
+
             driveFrequency = (
                 await self.remote.tel_extractionFan.next(flush=True)
             ).driveFrequency
             self.assertAlmostEqual(driveFrequency, 0)
             self.csc.mock_ctrl.fan_frequency = 10
+            await asyncio.sleep(2)
             driveFrequency = (
                 await self.remote.tel_extractionFan.next(flush=True)
             ).driveFrequency
             self.assertAlmostEqual(driveFrequency, 10)
+
+    async def test_new_telemetry(self) -> None:
+        """Test that the telemetry is published with the new controller."""
+        async with self.make_csc(
+            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
+        ):
+            extraction_fan = await self.remote.tel_extractionFan.next(flush=True)
+            self.assertAlmostEqual(extraction_fan.driveFrequency, 0)
+            if hasattr(extraction_fan, "driveVoltage"):
+                self.assertAlmostEqual(
+                    extraction_fan.driveVoltage,
+                    self.csc.mock_ctrl.drive_voltage,
+                    places=2,
+                )
+            self.csc.mock_ctrl.fan_frequency = 10
+            await asyncio.sleep(2)
+            extraction_fan = await self.remote.tel_extractionFan.next(flush=True)
+            self.assertAlmostEqual(extraction_fan.driveFrequency, 10)
+            if hasattr(extraction_fan, "driveVoltage"):
+                self.assertAlmostEqual(
+                    extraction_fan.driveVoltage,
+                    self.csc.mock_ctrl.drive_voltage,
+                    places=2,
+                )
 
     async def test_drive_fault_code(self) -> None:
         """Test the fan drive fault code event."""
@@ -212,6 +249,21 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
                 state=FanDriveState.OPERATING,
                 flush=False,
             )
+
+    async def test_old_controller(self) -> None:
+        """Test the CSC with an old controller protocol."""
+        async with self.make_csc(
+            initial_state=salobj.State.DISABLED, config_dir=None, simulation_mode=1
+        ):
+            await self.assert_next_summary_state(salobj.State.DISABLED)
+
+            # Delete the new commands from the mock controller.
+            await self.csc.start_mock_ctrl()
+            self.csc.mock_ctrl.delete_new_commands()
+
+            # Set the CSC to ENABLED.
+            await self.remote.cmd_enable.start()
+            await self.assert_next_summary_state(salobj.State.ENABLED)
 
 
 if __name__ == "__main__":

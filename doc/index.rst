@@ -43,6 +43,14 @@ You can find Jira issues for this module under the `ts_atbuilding_csc <https://j
 
 .. .. _lsst.ts.atbuilding.csc-pyapi:
 
+
+Change Log
+==========
+
+.. toctree::
+   version_history
+   :maxdepth: 1
+
 Python API reference
 ====================
 
