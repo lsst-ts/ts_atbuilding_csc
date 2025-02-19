@@ -133,14 +133,24 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         extraction_fan_payload = dict(driveFrequency=drive_frequency)
 
         # Check whether driveVoltage is part of the extractionFan telemetry.
-        if hasattr(self.salinfo, "metadata"):
-            topic_info = self.salinfo.metadata.topic_info["extractionFan"]
-            if "driveVoltage" in topic_info.field_info and drive_voltage is not None:
-                extraction_fan_payload["driveVoltage"] = drive_voltage
-        elif hasattr(self.salinfo, "component_info"):
-            fields = self.salinfo.component_info.topics["tel_extractionFan"].fields
+        try:
+            component_info = self.salinfo.component_info
+            fields = component_info.topics["tel_extractionFan"].fields
             if "driveVoltage" in fields.keys() and drive_voltage is not None:
                 extraction_fan_payload["driveVoltage"] = drive_voltage
+        except AttributeError:
+            try:
+                metadata = self.salinfo.metadata
+                topic_info = metadata.topic_info["extractionFan"]
+                if (
+                    "driveVoltage" in topic_info.field_info
+                    and drive_voltage is not None
+                ):
+                    extraction_fan_payload["driveVoltage"] = drive_voltage
+            except AttributeError:
+                raise RuntimeError(
+                    "Neither component_info nor metadata is available in salinfo."
+                )
 
         await self.tel_extractionFan.set_write(**extraction_fan_payload)
 
