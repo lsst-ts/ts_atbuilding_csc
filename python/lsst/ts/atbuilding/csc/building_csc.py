@@ -139,7 +139,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
                 extraction_fan_payload["driveVoltage"] = drive_voltage
         elif hasattr(self.salinfo, "component_info"):
             fields = self.salinfo.component_info.topics["tel_extractionFan"].fields
-            if "driveVoltage" in fields.keys():
+            if "driveVoltage" in fields.keys() and drive_voltage is not None:
                 extraction_fan_payload["driveVoltage"] = drive_voltage
 
         await self.tel_extractionFan.set_write(**extraction_fan_payload)
