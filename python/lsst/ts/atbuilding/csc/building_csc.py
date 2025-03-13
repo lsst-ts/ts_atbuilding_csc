@@ -213,18 +213,14 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
     async def configure(self, config: Any) -> None:
         self.config = config
 
-    async def do_enable(self, data: salobj.type_hints.BaseMsgType) -> None:
-        """Enable the CSC."""
-        await self.connect()
-        await super().do_enable(data)
-
-    async def close(
-        self, exception: Exception | None = None, cancel_start: bool = True
-    ) -> None:
-        """Close the CSC."""
-        self.log.debug("CSC close")
-        await self.disconnect()
-        await super().close(exception=exception, cancel_start=cancel_start)
+    async def handle_summary_state(self) -> None:
+        if self.disabled_or_enabled:
+            if (
+                self.client is None or not self.client.connected
+            ) and self.connect_task.done():
+                self.connect_task = asyncio.create_task(self.connect())
+        else:
+            await self.disconnect()
 
     async def connect(self) -> None:
         """Connect to the building RPi's TCP/IP port."""
@@ -372,6 +368,8 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             The command string to send to the server.
         """
         assert self.client is not None
+        if not self.client.connected:
+            raise RuntimeError("Cannot send a command when not connected.")
         await asyncio.wait_for(self.client.write_str(command), timeout=TCP_TIMEOUT)
 
         # Wait for a response
