@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.2.1
+------
+
+* Reconfigured connect/disconnect to use `handle_summary_state`.
+
 v0.2.0
 ------
 
