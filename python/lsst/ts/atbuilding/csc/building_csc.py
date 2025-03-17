@@ -92,9 +92,6 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         # Mock controller, used if simulation_mode is 1
         self.mock_ctrl: MockVentController | None = None
 
-        # Task that waits while connecting to the TCP/IP controller.
-        self.connect_task = utils.make_done_future()
-
         # Task that waits for messages from the TCP/IP controller.
         self.listen_task = utils.make_done_future()
 
@@ -213,18 +210,19 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
     async def configure(self, config: Any) -> None:
         self.config = config
 
-    async def do_enable(self, data: salobj.type_hints.BaseMsgType) -> None:
-        """Enable the CSC."""
-        await self.connect()
-        await super().do_enable(data)
+    async def handle_summary_state(self) -> None:
+        self.log.debug("handle_summary_state()")
+        if self.disabled_or_enabled:
+            if self.client is None or not self.client.connected:
+                await self.connect()
+        else:
+            await self.disconnect()
 
-    async def close(
-        self, exception: Exception | None = None, cancel_start: bool = True
-    ) -> None:
-        """Close the CSC."""
-        self.log.debug("CSC close")
+    async def close_tasks(self) -> None:
+        """Disconnect from the TCP/IP controller, if connected, and stop
+        the mock controller, if running.
+        """
         await self.disconnect()
-        await super().close(exception=exception, cancel_start=cancel_start)
 
     async def connect(self) -> None:
         """Connect to the building RPi's TCP/IP port."""
@@ -288,9 +286,9 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
         if self.client is not None:
             await self.client.close()
-        self.connect_task.cancel()
         self.listen_task.cancel()
         await self.stop_mock_ctrl()
+        self.log.debug("disconnect done")
 
     async def start_mock_ctrl(self) -> None:
         """Start the controller with the mock object as server."""
@@ -372,6 +370,8 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             The command string to send to the server.
         """
         assert self.client is not None
+        if not self.client.connected:
+            raise RuntimeError("Cannot send a command when not connected.")
         await asyncio.wait_for(self.client.write_str(command), timeout=TCP_TIMEOUT)
 
         # Wait for a response
