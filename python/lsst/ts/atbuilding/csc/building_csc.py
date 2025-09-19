@@ -122,34 +122,13 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             to emit.
         """
 
-        # TODO (DM-48497): Remove backwards compatibility with xml 22.1.
-
         drive_frequency = message_json["data"]["tel_extraction_fan"]
         drive_voltage = message_json["data"].get("tel_drive_voltage", None)
 
-        extraction_fan_payload = dict(driveFrequency=drive_frequency)
-
-        # Check whether driveVoltage is part of the extractionFan telemetry.
-        try:
-            component_info = self.salinfo.component_info
-            fields = component_info.topics["tel_extractionFan"].fields
-            if "driveVoltage" in fields.keys() and drive_voltage is not None:
-                extraction_fan_payload["driveVoltage"] = drive_voltage
-        except AttributeError:
-            try:
-                metadata = self.salinfo.metadata
-                topic_info = metadata.topic_info["extractionFan"]
-                if (
-                    "driveVoltage" in topic_info.field_info
-                    and drive_voltage is not None
-                ):
-                    extraction_fan_payload["driveVoltage"] = drive_voltage
-            except AttributeError:
-                raise RuntimeError(
-                    "Neither component_info nor metadata is available in salinfo."
-                )
-
-        await self.tel_extractionFan.set_write(**extraction_fan_payload)
+        await self.tel_extractionFan.set_write(
+            driveFrequency=drive_frequency,
+            driveVoltage=drive_voltage,
+        )
 
     async def handle_vent_gate_state(self, message_json: dict[str, Any]) -> None:
         """Accepts an evt_ventGateState JSON message from the server and
@@ -249,28 +228,12 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             asyncio.create_task(self.listen_for_messages())
             self.log.debug("connected")
 
-            # TODO (DM-48497): Remove backwards compatibility with xml 22.1.
-            if hasattr(self, "evt_maximumDriveFrequency"):
-                try:
-                    max_freq_response = await self.run_command(
-                        "get_fan_drive_max_frequency"
-                    )
-                    if "return_value" in max_freq_response:
-                        max_frequency = max_freq_response["return_value"]
-                        await self.evt_maximumDriveFrequency.set_write(
-                            driveFrequency=max_frequency,
-                        )
-                        self.log.debug("Emitted maximumDriveFrequency event")
-
-                except salobj.ExpectedError as exc:
-                    if "NotImplementedError" in str(exc):
-                        self.log.debug(
-                            "get_fan_drive_max_frequency not implemented in controller."
-                        )
-                    else:
-                        raise
-            else:
-                self.log.info("No maximumDriveFrequency event.")
+            max_freq_response = await self.run_command("get_fan_drive_max_frequency")
+            max_frequency = max_freq_response["return_value"]
+            await self.evt_maximumDriveFrequency.set_write(
+                driveFrequency=max_frequency,
+            )
+            self.log.debug("Emitted maximumDriveFrequency event")
 
         except Exception as e:
             err_msg = f"Could not open connection to host={host}, port={port}: {e!r}"
