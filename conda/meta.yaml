@@ -9,12 +9,13 @@ source:
 build:
   noarch: python
   script: {{ PYTHON }} -m pip install --no-deps --ignore-installed --no-build-isolation .
+  string: "py{{ PY_VER | replace('.', '') }}{{ PKG_HASH }}_{{ PKG_BUILDNUM }}"
   entry_points:
     - run_atbuilding = lsst.ts.atbuilding.csc:run_atbuilding
 
 test:
   requires:
-    - ts-conda-build =0.4
+    - ts-conda-build =0.5
     - ts-salobj {{ salobj_version }}
     - ts-xml
     - ts-tcpip
