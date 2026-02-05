@@ -334,6 +334,10 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         """
         assert self.client is not None
         if not self.client.connected:
+            await self.fault(
+                code=ErrorCode.UNEXPECTED_DISCONNECT,
+                report="Cannot send a command when not connected.",
+            )
             raise RuntimeError("Cannot send a command when not connected.")
         await asyncio.wait_for(self.client.write_str(command), timeout=TCP_TIMEOUT)
 
@@ -389,6 +393,12 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
                 break
             except Exception:
                 self.log.exception("Exception while handling server response.")
+
+        if self.disabled_or_enabled:
+            await self.fault(
+                code=ErrorCode.UNEXPECTED_DISCONNECT,
+                report="Controller disconnected unexpectedly",
+            )
 
 
 def run_atbuilding() -> None:
