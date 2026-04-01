@@ -9,11 +9,6 @@ license = { text = "GPL" }
 classifiers = [ "Programming Language :: Python :: 3" ]
 urls = { source_code = "https://github.com/lsst-ts/ts_atbuilding_csc" }
 dynamic = ["version"]
-dependencies = [
-    "ts_tcpip",
-    "ts_salobj",
-    "ts_xml",
-]
 
 [tool.setuptools.dynamic]
 version = { attr = "setuptools_scm.get_version" }
