@@ -39,9 +39,10 @@ MOCK_CTRL_START_TIMEOUT = 2
 # Max time (sec) to wait for a TCP/IP command to complete.
 TCP_TIMEOUT = 1
 
-# Max time (sec) to receive a message from the server.
-# This might be a while if no commands are active.
-SERVER_MESSAGE_TIMEOUT = 30
+# Reconnect behavior (seconds).
+RECONNECT_INITIAL_DELAY = 10.0
+RECONNECT_BACKOFF = 1.5
+RECONNECT_MAX_RETRIES = 10
 
 
 class ATBuildingCsc(salobj.ConfigurableCsc):
@@ -94,6 +95,9 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
         # Task that waits for messages from the TCP/IP controller.
         self.listen_task = utils.make_done_future()
+
+        # Task that retries connection on disconnect.
+        self.reconnect_task = utils.make_done_future()
 
         # Set up a dummy tcpip client, to connect to later.
         self.client: tcpip.Client | None = None
@@ -195,6 +199,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             if self.client is None or not self.client.connected:
                 await self.connect()
         else:
+            self._cancel_reconnect()
             await self.disconnect()
 
     async def close_tasks(self) -> None:
@@ -203,8 +208,24 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         """
         await self.disconnect()
 
-    async def connect(self) -> None:
-        """Connect to the building RPi's TCP/IP port."""
+    async def connect(self, allow_fault: bool = True) -> bool:
+        """Connect to the building RPi's TCP/IP port.
+
+        Parameters
+        ----------
+        allow_fault : `bool`
+            If True (the default), transition the CSC to FAULT on a
+            connection failure. Set to False when called from the
+            reconnect loop, which handles the FAULT transition itself
+            only after retries are exhausted.
+
+        Returns
+        -------
+        connected : `bool`
+            True if the connection succeeded (or was already open),
+            False if the attempt failed. When False and ``allow_fault``
+            is True, the CSC has also been driven to FAULT.
+        """
         if self.simulation_mode == 0:
             host = self.config.host
             port = self.config.port
@@ -217,7 +238,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         if self.config is None:
             raise RuntimeError("Not yet configured")
         if self.client is not None and self.client.connected:
-            raise RuntimeError("Already connected")
+            return True
 
         self.log.debug(f"Connecting to host={host}, port={port}")
         try:
@@ -235,11 +256,16 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             )
             self.log.debug("Emitted maximumDriveFrequency event")
 
+            self._cancel_reconnect()
+            return True
         except Exception as e:
             err_msg = f"Could not open connection to host={host}, port={port}: {e!r}"
             self.log.exception(err_msg)
-            await self.fault(code=ErrorCode.TCPIP_CONNECT_ERROR, report=err_msg)
-            return
+            if self.client is not None:
+                await self.client.close()
+            if allow_fault:
+                await self.fault(code=ErrorCode.TCPIP_CONNECT_ERROR, report=err_msg)
+            return False
 
     async def disconnect(self) -> None:
         """Disconnect from the TCP/IP controller, if connected, and stop
@@ -247,9 +273,8 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         """
         self.log.debug("disconnect")
 
-        if self.client is not None:
-            await self.client.close()
-        self.listen_task.cancel()
+        self._cancel_reconnect()
+        await self._close_client()
         await self.stop_mock_ctrl()
         self.log.debug("disconnect done")
 
@@ -334,10 +359,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         """
         assert self.client is not None
         if not self.client.connected:
-            await self.fault(
-                code=ErrorCode.UNEXPECTED_DISCONNECT,
-                report="Cannot send a command when not connected.",
-            )
+            self._start_reconnect("Command issued while disconnected.")
             raise RuntimeError("Cannot send a command when not connected.")
         await asyncio.wait_for(self.client.write_str(command), timeout=TCP_TIMEOUT)
 
@@ -367,11 +389,14 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         called that command.
         """
         assert self.client is not None
-        while self.client.connected:
+        disconnect_reason = "Controller disconnected unexpectedly"
+        while self.client is not None and self.client.connected:
             try:
                 # Receive a message and format it as JSON.
                 self.listen_task = asyncio.create_task(self.client.read_str())
-                message = await self.listen_task
+                message = await asyncio.wait_for(
+                    self.listen_task, timeout=self.config.read_timeout
+                )
 
                 message = message.strip()
                 message_json = json.loads(message)
@@ -385,20 +410,133 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
                     # Response queues provide the response back to the
                     # command that sent them.
                     await self.response_queue[command].put(message_json)
+            except asyncio.TimeoutError:
+                self.log.warning(
+                    "Timed out waiting for controller message after %.1f sec.",
+                    self.config.read_timeout,
+                )
+                disconnect_reason = "Timed out waiting for controller message"
+                self.listen_task.cancel()
+                break
             except asyncio.IncompleteReadError:
                 # Incomplete read implies disconnect
-                break
-            except asyncio.CancelledError:
-                # Cancelled listen_task for disconnect
                 break
             except Exception:
                 self.log.exception("Exception while handling server response.")
 
         if self.disabled_or_enabled:
-            await self.fault(
-                code=ErrorCode.UNEXPECTED_DISCONNECT,
-                report="Controller disconnected unexpectedly",
+            self._start_reconnect(disconnect_reason)
+
+    async def _close_client(self) -> None:
+        """Close the TCP client and cancel the active read task.
+
+        Sets ``self.client`` to None *before* awaiting the close, so any
+        concurrent coroutine checking the attribute sees the disconnected
+        state immediately rather than racing against the close.
+        """
+        client = self.client
+        self.client = None
+        if client is not None:
+            await client.close()
+        self.listen_task.cancel()
+
+    def _cancel_reconnect(self) -> None:
+        """Cancel the running reconnect task, if any.
+
+        Has no effect if no reconnect is in progress, or if the caller
+        is itself the reconnect task (which would otherwise cancel
+        itself mid-execution).
+        """
+        current_task = asyncio.current_task()
+        if not self.reconnect_task.done() and self.reconnect_task is not current_task:
+            self.reconnect_task.cancel()
+
+    def _start_reconnect(
+        self, reason: str, fault_code: ErrorCode = ErrorCode.UNEXPECTED_DISCONNECT
+    ) -> None:
+        """Schedule a background reconnect loop.
+
+        Does nothing if the CSC is not in the DISABLED or ENABLED state,
+        or if a reconnect task is already running. The CSC will be driven
+        to FAULT with ``fault_code`` only if every retry in
+        ``_reconnect_loop`` fails.
+
+        Parameters
+        ----------
+        reason : `str`
+            Human-readable description of why the reconnect was triggered.
+            Logged on each attempt and included in the final FAULT report.
+        fault_code : `ErrorCode`
+            Error code to report if all retries are exhausted. Defaults
+            to ``ErrorCode.UNEXPECTED_DISCONNECT``.
+        """
+        if not self.disabled_or_enabled:
+            self.log.info("Not reconnecting in summary state %s", self.summary_state)
+            return
+        if not self.reconnect_task.done():
+            return
+        self.log.warning("Starting reconnect loop: %s", reason)
+        self.reconnect_task = asyncio.create_task(
+            self._reconnect_loop(reason, fault_code)
+        )
+
+    async def _reconnect_loop(self, reason: str, fault_code: ErrorCode) -> None:
+        """Retry the controller connection with exponential backoff.
+
+        Closes any existing client (and mock controller, in simulation
+        mode), then makes up to ``RECONNECT_MAX_RETRIES`` attempts,
+        sleeping ``RECONNECT_INITIAL_DELAY`` seconds before the first
+        attempt and multiplying the delay by ``RECONNECT_BACKOFF``
+        after each failure. Returns early if the CSC leaves the
+        DISABLED/ENABLED states, if the client becomes connected
+        by other means, or if the task is cancelled. If every attempt
+        fails, drives the CSC to FAULT with ``fault_code``.
+
+        Parameters
+        ----------
+        reason : `str`
+            Human-readable cause of the disconnect, propagated to log
+            messages and the FAULT report.
+        fault_code : `ErrorCode`
+            Error code to use if retries are exhausted.
+        """
+        await self._close_client()
+        if self.simulation_mode == 1:
+            await self.stop_mock_ctrl()
+        delay = RECONNECT_INITIAL_DELAY
+        for attempt in range(1, RECONNECT_MAX_RETRIES + 1):
+            if self.client is not None and self.client.connected:
+                return
+            self.log.warning(
+                "Reconnect attempt %d/%d in %.1f sec (%s).",
+                attempt,
+                RECONNECT_MAX_RETRIES,
+                delay,
+                reason,
             )
+            try:
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError:
+                return
+
+            if not self.disabled_or_enabled:
+                self.log.info(
+                    "Reconnect loop canceled due to summary state %s",
+                    self.summary_state,
+                )
+                return
+
+            if await self.connect(allow_fault=False):
+                self.log.info("Reconnect succeeded.")
+                return
+            delay *= RECONNECT_BACKOFF
+
+        await self.fault(
+            code=fault_code,
+            report=(
+                f"Reconnect failed after {RECONNECT_MAX_RETRIES} attempts: {reason}"
+            ),
+        )
 
 
 def run_atbuilding() -> None:
