@@ -1,3 +1,18 @@
+v0.2.3 (2026-05-18)
+===================
+
+New Features
+------------
+
+- Added reconnect retry handling for unexpected controller disconnects. (`OSW-2112 <https://rubinobs.atlassian.net//browse/OSW-2112>`_)
+
+
+Bug Fixes
+---------
+
+- Added functionality to fault if the controller disconnects. (`OSW-1789 <https://rubinobs.atlassian.net//browse/OSW-1789>`_)
+
+
 v0.2.2 (2026-01-26)
 ===================
 

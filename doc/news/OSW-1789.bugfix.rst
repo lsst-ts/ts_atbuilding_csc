@@ -1,1 +1,0 @@
-Added functionality to fault if the controller disconnects.
