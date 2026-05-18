@@ -1,0 +1,1 @@
+Added reconnect retry handling for unexpected controller disconnects.

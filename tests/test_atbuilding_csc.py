@@ -20,10 +20,15 @@
 
 import asyncio
 import unittest
+from unittest.mock import patch
 
 from lsst.ts import salobj
 from lsst.ts.atbuilding import csc
+from lsst.ts.atbuilding.csc import building_csc
+from lsst.ts.atbuilding.csc.enums import ErrorCode
 from lsst.ts.xml.enums.ATBuilding import FanDriveState, VentGateState
+
+STD_TIMEOUT = 30.0
 
 
 class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
@@ -36,22 +41,29 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
             simulation_mode=simulation_mode,
         )
 
+    async def wait_for_vent_gate_state(
+        self, expected_state: list[VentGateState], timeout: float = STD_TIMEOUT
+    ) -> None:
+        expected = [int(state) for state in expected_state]
+
+        async def wait_for_match() -> None:
+            while True:
+                data = await self.remote.evt_ventGateState.next(flush=False)
+                actual = [int(state) for state in data.state]
+                if actual == expected:
+                    return
+
+        await asyncio.wait_for(wait_for_match(), timeout=timeout)
+
     async def test_open_one_vent(self) -> None:
         """Use openVentGate to open one vent."""
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
         ):
-            await self.assert_next_sample(
-                topic=self.remote.evt_ventGateState,
-                state=[VentGateState.CLOSED] * 4,
-                flush=False,
-            )
+            await self.wait_for_vent_gate_state([VentGateState.CLOSED] * 4)
             await self.remote.cmd_openVentGate.set_start(gate=[0, -1, -1, -1])
-            await asyncio.sleep(1)
-            await self.assert_next_sample(
-                topic=self.remote.evt_ventGateState,
-                state=[VentGateState.OPENED] + [VentGateState.CLOSED] * 3,
-                flush=False,
+            await self.wait_for_vent_gate_state(
+                [VentGateState.OPENED] + [VentGateState.CLOSED] * 3
             )
 
     async def test_open_vents(self) -> None:
@@ -59,17 +71,9 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
         async with self.make_csc(
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
         ):
-            await self.assert_next_sample(
-                topic=self.remote.evt_ventGateState,
-                state=[VentGateState.CLOSED] * 4,
-                flush=False,
-            )
+            await self.wait_for_vent_gate_state([VentGateState.CLOSED] * 4)
             await self.remote.cmd_openVentGate.set_start(gate=[0, 1, 2, 3])
-            await self.assert_next_sample(
-                topic=self.remote.evt_ventGateState,
-                state=[VentGateState.OPENED] * 4,
-                flush=False,
-            )
+            await self.wait_for_vent_gate_state([VentGateState.OPENED] * 4)
 
     async def test_close_one_vent(self) -> None:
         """Use closeVentGate to close one vent."""
@@ -77,16 +81,10 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
         ):
             self.csc.mock_ctrl.vent_states = [VentGateState.OPENED] * 4
-            await self.assert_next_sample(
-                topic=self.remote.evt_ventGateState,
-                state=[VentGateState.OPENED] * 4,
-                flush=True,
-            )
+            await self.wait_for_vent_gate_state([VentGateState.OPENED] * 4)
             await self.remote.cmd_closeVentGate.set_start(gate=[0, -1, -1, -1])
-            await self.assert_next_sample(
-                topic=self.remote.evt_ventGateState,
-                state=[VentGateState.CLOSED] + [VentGateState.OPENED] * 3,
-                flush=True,
+            await self.wait_for_vent_gate_state(
+                [VentGateState.CLOSED] + [VentGateState.OPENED] * 3
             )
 
     async def test_close_vents(self) -> None:
@@ -95,18 +93,9 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
             initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
         ):
             self.csc.mock_ctrl.vent_states = [VentGateState.OPENED] * 4
-            await self.assert_next_sample(
-                topic=self.remote.evt_ventGateState,
-                state=[VentGateState.OPENED] * 4,
-                flush=True,
-            )
+            await self.wait_for_vent_gate_state([VentGateState.OPENED] * 4)
             await self.remote.cmd_closeVentGate.set_start(gate=[0, 1, 2, 3])
-            await asyncio.sleep(1)
-            await self.assert_next_sample(
-                topic=self.remote.evt_ventGateState,
-                state=[VentGateState.CLOSED] * 4,
-                flush=False,
-            )
+            await self.wait_for_vent_gate_state([VentGateState.CLOSED] * 4)
 
     async def test_reset_extraction_fan_drive(self) -> None:
         """Use resetExtractionFanDrive to reset the extraction fan drive."""
@@ -264,6 +253,76 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
             # Set the CSC to ENABLED.
             await self.remote.cmd_enable.start()
             await self.assert_next_summary_state(salobj.State.ENABLED)
+
+    async def test_unexpected_disconnect_reconnects(self) -> None:
+        """Test that an unexpected disconnect reconnects successfully."""
+        async with self.make_csc(
+            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
+        ):
+            assert self.csc.mock_ctrl is not None
+            await self.csc.start_mock_ctrl()
+
+            await asyncio.sleep(1)
+            self.remote.evt_errorCode.flush()
+            self.remote.evt_summaryState.flush()
+
+            with (
+                patch.object(building_csc, "RECONNECT_INITIAL_DELAY", 0.01),
+                patch.object(building_csc, "RECONNECT_BACKOFF", 1.0),
+                patch.object(building_csc, "RECONNECT_MAX_RETRIES", 2),
+            ):
+                original_reconnect_task = self.csc.reconnect_task
+                await self.csc.mock_ctrl.close()
+
+                with self.assertRaises(salobj.AckError):
+                    await self.remote.cmd_openVentGate.set_start(gate=[0, -1, -1, -1])
+
+                async def wait_for_reconnect_start() -> None:
+                    while self.csc.reconnect_task is original_reconnect_task:
+                        await asyncio.sleep(0.05)
+
+                await asyncio.wait_for(wait_for_reconnect_start(), timeout=5)
+                await asyncio.wait_for(
+                    asyncio.shield(self.csc.reconnect_task), timeout=5
+                )
+                await self.remote.cmd_openVentGate.set_start(gate=[0, -1, -1, -1])
+                await self.wait_for_vent_gate_state(
+                    [VentGateState.OPENED] + [VentGateState.CLOSED] * 3
+                )
+
+    async def test_unexpected_disconnect_faults_after_retries(self) -> None:
+        """Test that reconnect retries exhaust to UNEXPECTED_DISCONNECT."""
+        async with self.make_csc(
+            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
+        ):
+            assert self.csc.mock_ctrl is not None
+            await self.csc.start_mock_ctrl()
+
+            await asyncio.sleep(1)
+            self.remote.evt_errorCode.flush()
+            self.remote.evt_summaryState.flush()
+
+            connect_attempts = 0
+
+            async def fake_connect(allow_fault: bool = True) -> bool:
+                nonlocal connect_attempts
+                connect_attempts += 1
+                return False
+
+            with (
+                patch.object(building_csc, "RECONNECT_INITIAL_DELAY", 0.01),
+                patch.object(building_csc, "RECONNECT_BACKOFF", 1.0),
+                patch.object(self.csc, "connect", fake_connect),
+            ):
+                await self.csc.mock_ctrl.close()
+
+                await self.assert_next_summary_state(salobj.State.FAULT)
+                await self.assert_next_sample(
+                    topic=self.remote.evt_errorCode,
+                    errorCode=int(ErrorCode.UNEXPECTED_DISCONNECT),
+                    flush=False,
+                )
+                self.assertEqual(connect_attempts, building_csc.RECONNECT_MAX_RETRIES)
 
 
 if __name__ == "__main__":
