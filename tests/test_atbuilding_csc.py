@@ -255,6 +255,57 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
             await self.remote.cmd_enable.start()
             await self.assert_next_summary_state(salobj.State.ENABLED)
 
+    async def test_timed_out_command_does_not_poison_next(self) -> None:
+        """A command whose response arrives after run_command times out must
+        not have that late response delivered to the next command of the same
+        name.
+
+        Regression test: responses were once matched to commands only by a
+        shared, per-name queue, so a reply that arrived after the 1 s timeout
+        stayed queued and was handed to the *next* same-named command, shifting
+        every subsequent response by one.
+        """
+        async with self.make_csc(
+            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
+        ):
+            assert self.csc.mock_ctrl is not None
+
+            command = "get_fan_drive_max_frequency"
+
+            # Hold the controller's reply to the first call until we release
+            # it, so the CSC-side run_command is guaranteed to time out first.
+            release_first = asyncio.Event()
+            call_count = 0
+
+            async def slow_first() -> float:
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    await release_first.wait()
+                return self.csc.mock_ctrl.max_frequency
+
+            self.csc.mock_ctrl.get_fan_drive_max_frequency = slow_first
+
+            with patch.object(building_csc, "TCP_TIMEOUT", 0.5):
+                # First command: the controller stalls, so this times out. The
+                # value it will *eventually* report is deliberately distinct.
+                self.csc.mock_ctrl.max_frequency = 111.0
+                with self.assertRaises(asyncio.TimeoutError):
+                    await self.csc.run_command(command)
+
+                # Now let the stalled first response come back (late). It must
+                # be discarded, not saved for the next command.
+                release_first.set()
+                await asyncio.sleep(0.1)
+
+                # Second command gets its OWN response, not the stale 111.0.
+                self.csc.mock_ctrl.max_frequency = 222.0
+                response = await self.csc.run_command(command)
+                self.assertAlmostEqual(response["return_value"], 222.0)
+
+            # No leftover waiters remain for that command name.
+            self.assertEqual(len(self.csc.response_waiters[command]), 0)
+
     async def test_unexpected_disconnect_reconnects(self) -> None:
         """Test that an unexpected disconnect reconnects successfully."""
         async with self.make_csc(
