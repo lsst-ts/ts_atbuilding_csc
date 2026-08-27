@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: ts-atbuilding-csc
+Version: 0.3.1.dev2+gd02cc93d6
+Summary: ATBuilding dome vent CSC.
+License: GPL
+Project-URL: source_code, https://github.com/lsst-ts/ts_atbuilding_csc
+Classifier: Programming Language :: Python :: 3
+License-File: LICENSE
+Provides-Extra: dev
+Requires-Dist: documenteer[pipelines]; extra == "dev"
+Dynamic: license-file
