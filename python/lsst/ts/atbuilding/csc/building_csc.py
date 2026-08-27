@@ -382,7 +382,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
         try:
             await asyncio.wait_for(self.client.write_str(command), timeout=TCP_TIMEOUT)
-        except BaseException:
+        except (Exception, asyncio.CancelledError):
             # The command never made it onto the wire, so no response will
             # arrive for it. Drop the waiter to keep the deque aligned with the
             # commands actually sent.
