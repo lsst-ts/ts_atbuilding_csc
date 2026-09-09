@@ -23,7 +23,7 @@ __all__ = ["ATBuildingCsc", "run_atbuilding"]
 
 import asyncio
 import json
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Any, DefaultDict
 
 from lsst.ts import salobj, tcpip, utils
@@ -103,8 +103,16 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         # Set up a dummy tcpip client, to connect to later.
         self.client: tcpip.Client | None = None
 
-        self.response_queue: DefaultDict[str, asyncio.Queue] = defaultdict(
-            asyncio.Queue
+        # Maps each command name to a FIFO of futures, one per in-flight
+        # command of that name still awaiting a response. Several commands
+        # (even of the same name) may be outstanding at once; the controller
+        # handles them serially and replies in order, so the oldest
+        # outstanding future for a name matches the next response for it.
+        # A future left cancelled by a timed-out ``run_command`` stays in the
+        # deque so its late response is popped and discarded, rather than being
+        # mis-delivered to a later command of the same name.
+        self.response_waiters: DefaultDict[str, "deque[asyncio.Future]"] = defaultdict(
+            deque
         )
 
         self.callbacks = {
@@ -362,13 +370,31 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         if not self.client.connected:
             self._start_reconnect("Command issued while disconnected.")
             raise RuntimeError("Cannot send a command when not connected.")
-        await asyncio.wait_for(self.client.write_str(command), timeout=TCP_TIMEOUT)
 
-        # Wait for a response
+        # Register a waiter for this command's response *before* sending, so a
+        # fast reply can never arrive before we are ready to receive it. Each
+        # in-flight command gets its own future; listen_for_messages matches
+        # responses to them in FIFO order per command name.
         command_name = command.split()[0]
-        response = await asyncio.wait_for(
-            self.response_queue[command_name].get(), timeout=TCP_TIMEOUT
-        )
+        waiters = self.response_waiters[command_name]
+        future: asyncio.Future = asyncio.get_running_loop().create_future()
+        waiters.append(future)
+
+        try:
+            await asyncio.wait_for(self.client.write_str(command), timeout=TCP_TIMEOUT)
+        except (Exception, asyncio.CancelledError):
+            # The command never made it onto the wire, so no response will
+            # arrive for it. Drop the waiter to keep the deque aligned with the
+            # commands actually sent.
+            if future in waiters:
+                waiters.remove(future)
+            raise
+
+        # Wait for the matching response. On timeout, wait_for cancels
+        # ``future``; it is deliberately left in the deque so that its eventual
+        # late response is consumed and discarded by listen_for_messages,
+        # keeping subsequent commands of the same name correctly aligned.
+        response = await asyncio.wait_for(future, timeout=TCP_TIMEOUT)
         if response["error"] != 0:
             # If an error code is supplied, log the error and
             # raise an exception.
@@ -408,9 +434,18 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
                     # handler methods.
                     await self.callbacks[command](message_json)
                 else:
-                    # Response queues provide the response back to the
-                    # command that sent them.
-                    await self.response_queue[command].put(message_json)
+                    # Deliver the response to the oldest command of this name
+                    # still awaiting one.
+                    waiters = self.response_waiters[command]
+                    if not waiters:
+                        self.log.warning(
+                            "Received unsolicited response for %r; discarding.",
+                            command,
+                        )
+                    else:
+                        future = waiters.popleft()
+                        if not future.done():
+                            future.set_result(message_json)
             except asyncio.TimeoutError:
                 self.log.warning(
                     "Timed out waiting for controller message after %.1f sec.",
@@ -440,6 +475,13 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         if client is not None:
             await client.close()
         self.listen_task.cancel()
+
+        # Abandon any outstanding response waiters. The connection is gone, so
+        # their responses will never arrive; each in-flight run_command falls
+        # back to its own timeout. Clearing here means the next connection
+        # starts with an empty, aligned set of waiters rather than inheriting
+        # stale futures that would shift every later response by one.
+        self.response_waiters.clear()
 
     def _cancel_reconnect(self) -> None:
         """Cancel the running reconnect task, if any.
