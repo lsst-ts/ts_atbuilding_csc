@@ -25,7 +25,7 @@ import yaml
 
 CONFIG_SCHEMA = yaml.safe_load("""
 $schema: http://json-schema.org/draft-07/schema#
-$id: https://github.com/lsst-ts/ts_atbuilding_csc/blob/main/python/lsst/ts/atbuilding/csc/schema_config.py
+$id: https://github.com/lsst-ts/ts_atbuilding_csc/blob/main/python/lsst/ts/atbuilding/csc/config_schema.py
 # title must end with one or more spaces followed by the schema version, which must begin with "v"
 title: ATBuilding v1
 description: Schema for ATBuilding configuration files
