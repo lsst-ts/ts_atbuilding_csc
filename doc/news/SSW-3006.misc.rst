@@ -1,0 +1,1 @@
+Switched from black/flake8/isort to ruff, adopted the standard TSSW GitHub workflows, set up the towncrier version history, and fixed the EUPS dependencies.
