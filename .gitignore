@@ -25,3 +25,4 @@ pytest_session.txt
 .mypy.ini
 towncrier.toml
 .LICENSE.txt
+.ruff.toml
