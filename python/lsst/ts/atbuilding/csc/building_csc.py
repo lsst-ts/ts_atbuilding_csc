@@ -111,9 +111,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         # A future left cancelled by a timed-out ``run_command`` stays in the
         # deque so its late response is popped and discarded, rather than being
         # mis-delivered to a later command of the same name.
-        self.response_waiters: DefaultDict[str, "deque[asyncio.Future]"] = defaultdict(
-            deque
-        )
+        self.response_waiters: DefaultDict[str, "deque[asyncio.Future]"] = defaultdict(deque)
 
         self.callbacks = {
             "telemetry": self.handle_telemetry,
@@ -159,9 +157,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         state = [VentGateState(i) for i in message_json["data"]]
         await self.evt_ventGateState.set_write(state=state)
 
-    async def handle_extraction_fan_drive_state(
-        self, message_json: dict[str, Any]
-    ) -> None:
+    async def handle_extraction_fan_drive_state(self, message_json: dict[str, Any]) -> None:
         """Accepts an evt_extractionFanDriveState JSON message from the
         server and invokes the event in the CSC.
 
@@ -177,9 +173,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         state = FanDriveState(message_json["data"])
         await self.evt_extractionFanDriveState.set_write(state=state)
 
-    async def handle_extraction_fan_drive_fault_code(
-        self, message_json: dict[str, Any]
-    ) -> None:
+    async def handle_extraction_fan_drive_fault_code(self, message_json: dict[str, Any]) -> None:
         """Accepts an evt_extractionFanDriveFaultCode JSON message from the
         server and invokes the event in the CSC.
 
@@ -252,9 +246,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         self.log.debug(f"Connecting to host={host}, port={port}")
         try:
             self.client = tcpip.Client(host=host, port=port, log=self.log)
-            await asyncio.wait_for(
-                self.client.start_task, timeout=self.config.connection_timeout
-            )
+            await asyncio.wait_for(self.client.start_task, timeout=self.config.connection_timeout)
             asyncio.create_task(self.listen_for_messages())
             self.log.debug("connected")
 
@@ -295,9 +287,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         try:
             assert self.simulation_mode == 1
             self.mock_ctrl = MockVentController(port=0, log=self.log)
-            await asyncio.wait_for(
-                self.mock_ctrl.start_task, timeout=MOCK_CTRL_START_TIMEOUT
-            )
+            await asyncio.wait_for(self.mock_ctrl.start_task, timeout=MOCK_CTRL_START_TIMEOUT)
         except Exception as e:
             err_msg = f"Failed to start mock controller: {e!r}"
             self.log.exception(err_msg)
@@ -323,28 +313,20 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         args = " ".join([str(i) for i in data.gate])
         await self.run_command(f"open_vent_gate {args}")
 
-    async def do_resetExtractionFanDrive(
-        self, data: salobj.type_hints.BaseMsgType
-    ) -> None:
+    async def do_resetExtractionFanDrive(self, data: salobj.type_hints.BaseMsgType) -> None:
         """Implement the ``resetExtractionFanDrive`` command."""
         self.assert_enabled()
         await self.run_command("reset_extraction_fan_drive")
 
-    async def do_setExtractionFanDriveFreq(
-        self, data: salobj.type_hints.BaseMsgType
-    ) -> None:
+    async def do_setExtractionFanDriveFreq(self, data: salobj.type_hints.BaseMsgType) -> None:
         """Implement the ``setExtractionFanDriveFreq`` command."""
         self.assert_enabled()
         await self.run_command(f"set_extraction_fan_drive_freq {data.targetFrequency}")
 
-    async def do_setExtractionFanManualControlMode(
-        self, data: salobj.type_hints.BaseMsgType
-    ) -> None:
+    async def do_setExtractionFanManualControlMode(self, data: salobj.type_hints.BaseMsgType) -> None:
         """Implement the ``setExtractionFanControlMode`` command."""
         self.assert_enabled()
-        await self.run_command(
-            f"set_extraction_fan_manual_control_mode {data.enableManualControlMode}"
-        )
+        await self.run_command(f"set_extraction_fan_manual_control_mode {data.enableManualControlMode}")
 
     async def do_startExtractionFan(self, data: salobj.type_hints.BaseMsgType) -> None:
         """Implement the ``startExtractionFan`` command."""
@@ -399,10 +381,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             # If an error code is supplied, log the error and
             # raise an exception.
             self.log.error(
-                "Error response received from command: "
-                + command
-                + " --> "
-                + json.dumps(response)
+                "Error response received from command: " + command + " --> " + json.dumps(response)
             )
             raise salobj.ExpectedError(json.dumps(response))
 
@@ -421,9 +400,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             try:
                 # Receive a message and format it as JSON.
                 self.listen_task = asyncio.create_task(self.client.read_str())
-                message = await asyncio.wait_for(
-                    self.listen_task, timeout=self.config.read_timeout
-                )
+                message = await asyncio.wait_for(self.listen_task, timeout=self.config.read_timeout)
 
                 message = message.strip()
                 message_json = json.loads(message)
@@ -494,9 +471,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         if not self.reconnect_task.done() and self.reconnect_task is not current_task:
             self.reconnect_task.cancel()
 
-    def _start_reconnect(
-        self, reason: str, fault_code: ErrorCode = ErrorCode.UNEXPECTED_DISCONNECT
-    ) -> None:
+    def _start_reconnect(self, reason: str, fault_code: ErrorCode = ErrorCode.UNEXPECTED_DISCONNECT) -> None:
         """Schedule a background reconnect loop.
 
         Does nothing if the CSC is not in the DISABLED or ENABLED state,
@@ -519,9 +494,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         if not self.reconnect_task.done():
             return
         self.log.warning("Starting reconnect loop: %s", reason)
-        self.reconnect_task = asyncio.create_task(
-            self._reconnect_loop(reason, fault_code)
-        )
+        self.reconnect_task = asyncio.create_task(self._reconnect_loop(reason, fault_code))
 
     async def _reconnect_loop(self, reason: str, fault_code: ErrorCode) -> None:
         """Retry the controller connection with exponential backoff.
@@ -576,9 +549,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
         await self.fault(
             code=fault_code,
-            report=(
-                f"Reconnect failed after {RECONNECT_MAX_RETRIES} attempts: {reason}"
-            ),
+            report=(f"Reconnect failed after {RECONNECT_MAX_RETRIES} attempts: {reason}"),
         )
 
 
