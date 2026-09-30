@@ -26,3 +26,4 @@ pytest_session.txt
 towncrier.toml
 .LICENSE.txt
 .ruff.toml
+*.egg-info/

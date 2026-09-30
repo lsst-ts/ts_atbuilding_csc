@@ -1,2 +1,0 @@
-[console_scripts]
-run_atbuilding = lsst.ts.atbuilding.csc:run_atbuilding

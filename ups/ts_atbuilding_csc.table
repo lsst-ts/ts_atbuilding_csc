@@ -1,14 +1,13 @@
 # List EUPS dependencies of this package here.
 # - Any package whose API is used directly should be listed explicitly.
-# - Common third-party packages can be assumed to be recursively included by
-#   the "sconsUtils" package.
-setupRequired(sconsUtils)
 
 # ts_atbuilding_vents required for `cast_string_to_type` function.
 setupRequired(ts_vent_controller)
 
 setupRequired(ts_salobj)
 setupRequired(ts_tcpip)
+setupRequired(ts_config_attcs)
+setupRequired(ts_xml)
 
 
 # The following is boilerplate for all packages.
