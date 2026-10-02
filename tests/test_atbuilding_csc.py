@@ -58,41 +58,29 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
 
     async def test_open_one_vent(self) -> None:
         """Use openVentGate to open one vent."""
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
             await self.wait_for_vent_gate_state([VentGateState.CLOSED] * 4)
             await self.remote.cmd_openVentGate.set_start(gate=[0, -1, -1, -1])
-            await self.wait_for_vent_gate_state(
-                [VentGateState.OPENED] + [VentGateState.CLOSED] * 3
-            )
+            await self.wait_for_vent_gate_state([VentGateState.OPENED] + [VentGateState.CLOSED] * 3)
 
     async def test_open_vents(self) -> None:
         """Use openVentGate to open all vents."""
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
             await self.wait_for_vent_gate_state([VentGateState.CLOSED] * 4)
             await self.remote.cmd_openVentGate.set_start(gate=[0, 1, 2, 3])
             await self.wait_for_vent_gate_state([VentGateState.OPENED] * 4)
 
     async def test_close_one_vent(self) -> None:
         """Use closeVentGate to close one vent."""
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
             self.csc.mock_ctrl.vent_states = [VentGateState.OPENED] * 4
             await self.wait_for_vent_gate_state([VentGateState.OPENED] * 4)
             await self.remote.cmd_closeVentGate.set_start(gate=[0, -1, -1, -1])
-            await self.wait_for_vent_gate_state(
-                [VentGateState.CLOSED] + [VentGateState.OPENED] * 3
-            )
+            await self.wait_for_vent_gate_state([VentGateState.CLOSED] + [VentGateState.OPENED] * 3)
 
     async def test_close_vents(self) -> None:
         """Use closeVentGate to close all vents."""
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
             self.csc.mock_ctrl.vent_states = [VentGateState.OPENED] * 4
             await self.wait_for_vent_gate_state([VentGateState.OPENED] * 4)
             await self.remote.cmd_closeVentGate.set_start(gate=[0, 1, 2, 3])
@@ -100,9 +88,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
 
     async def test_reset_extraction_fan_drive(self) -> None:
         """Use resetExtractionFanDrive to reset the extraction fan drive."""
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
             self.assertFalse(self.csc.mock_ctrl.extraction_fan_drive_was_reset)
             await self.remote.cmd_resetExtractionFanDrive.set_start()
             self.assertTrue(self.csc.mock_ctrl.extraction_fan_drive_was_reset)
@@ -111,54 +97,38 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
         """Use setExtractionFanDriveFreq to set the extraction fan drive
         frequency.
         """
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
-            await self.remote.cmd_setExtractionFanDriveFreq.set_start(
-                targetFrequency=12.5
-            )
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
+            await self.remote.cmd_setExtractionFanDriveFreq.set_start(targetFrequency=12.5)
             self.assertAlmostEqual(self.csc.mock_ctrl.fan_frequency, 12.5)
 
     async def test_set_extraction_fan_manual(self) -> None:
         """Use setExtractionFanManualControlMode to set the extraction
         fan drive to manual control mode.
         """
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
-            await self.remote.cmd_setExtractionFanManualControlMode.set_start(
-                enableManualControlMode=False
-            )
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
+            await self.remote.cmd_setExtractionFanManualControlMode.set_start(enableManualControlMode=False)
             self.assertFalse(self.csc.mock_ctrl.manual_control_mode)
 
-            await self.remote.cmd_setExtractionFanManualControlMode.set_start(
-                enableManualControlMode=True
-            )
+            await self.remote.cmd_setExtractionFanManualControlMode.set_start(enableManualControlMode=True)
             self.assertTrue(self.csc.mock_ctrl.manual_control_mode)
 
     async def test_start_extraction_fan(self) -> None:
         """Use startExtractionFan to start the extraction fan."""
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
             self.csc.mock_ctrl.fan_frequency = 0
             await self.remote.cmd_startExtractionFan.set_start()
             self.assertAlmostEqual(self.csc.mock_ctrl.fan_frequency, 50)
 
     async def test_stop_extraction_fan(self) -> None:
         """Use stopExtractionFan to stop the extraction fan."""
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
             self.csc.mock_ctrl.fan_frequency = 50
             await self.remote.cmd_stopExtractionFan.set_start()
             self.assertAlmostEqual(self.csc.mock_ctrl.fan_frequency, 0)
 
     async def test_old_telemetry(self) -> None:
         """Test that the telemetry is published with the old controller."""
-        async with self.make_csc(
-            initial_state=salobj.State.DISABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.DISABLED, config_dir=None, simulation_mode=1):
             await self.assert_next_summary_state(salobj.State.DISABLED)
 
             # Delete the new commands from the mock controller.
@@ -171,22 +141,16 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
 
             # Now ready to go with old controller...
 
-            driveFrequency = (
-                await self.remote.tel_extractionFan.next(flush=True)
-            ).driveFrequency
+            driveFrequency = (await self.remote.tel_extractionFan.next(flush=True)).driveFrequency
             self.assertAlmostEqual(driveFrequency, 0)
             self.csc.mock_ctrl.fan_frequency = 10
             await asyncio.sleep(2)
-            driveFrequency = (
-                await self.remote.tel_extractionFan.next(flush=True)
-            ).driveFrequency
+            driveFrequency = (await self.remote.tel_extractionFan.next(flush=True)).driveFrequency
             self.assertAlmostEqual(driveFrequency, 10)
 
     async def test_new_telemetry(self) -> None:
         """Test that the telemetry is published with the new controller."""
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
             extraction_fan = await self.remote.tel_extractionFan.next(flush=True)
             self.assertAlmostEqual(extraction_fan.driveFrequency, 0)
             if hasattr(extraction_fan, "driveVoltage"):
@@ -208,9 +172,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
 
     async def test_drive_fault_code(self) -> None:
         """Test the fan drive fault code event."""
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
             await self.assert_next_sample(
                 topic=self.remote.evt_extractionFanDriveFaultCode,
                 state=22,  # default value
@@ -225,9 +187,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
 
     async def test_drive_state(self) -> None:
         """Test the fan drive state event."""
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
             await self.assert_next_sample(
                 topic=self.remote.evt_extractionFanDriveState,
                 state=FanDriveState.STOPPED,
@@ -242,9 +202,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
 
     async def test_old_controller(self) -> None:
         """Test the CSC with an old controller protocol."""
-        async with self.make_csc(
-            initial_state=salobj.State.DISABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.DISABLED, config_dir=None, simulation_mode=1):
             await self.assert_next_summary_state(salobj.State.DISABLED)
 
             # Delete the new commands from the mock controller.
@@ -265,9 +223,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
         stayed queued and was handed to the *next* same-named command, shifting
         every subsequent response by one.
         """
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
             assert self.csc.mock_ctrl is not None
 
             command = "get_fan_drive_max_frequency"
@@ -308,9 +264,7 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
 
     async def test_unexpected_disconnect_reconnects(self) -> None:
         """Test that an unexpected disconnect reconnects successfully."""
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
             assert self.csc.mock_ctrl is not None
             await self.csc.start_mock_ctrl()
 
@@ -334,19 +288,13 @@ class ATBuildingTestCase(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCas
                         await asyncio.sleep(0.05)
 
                 await asyncio.wait_for(wait_for_reconnect_start(), timeout=5)
-                await asyncio.wait_for(
-                    asyncio.shield(self.csc.reconnect_task), timeout=5
-                )
+                await asyncio.wait_for(asyncio.shield(self.csc.reconnect_task), timeout=5)
                 await self.remote.cmd_openVentGate.set_start(gate=[0, -1, -1, -1])
-                await self.wait_for_vent_gate_state(
-                    [VentGateState.OPENED] + [VentGateState.CLOSED] * 3
-                )
+                await self.wait_for_vent_gate_state([VentGateState.OPENED] + [VentGateState.CLOSED] * 3)
 
     async def test_unexpected_disconnect_faults_after_retries(self) -> None:
         """Test that reconnect retries exhaust to UNEXPECTED_DISCONNECT."""
-        async with self.make_csc(
-            initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.ENABLED, config_dir=None, simulation_mode=1):
             assert self.csc.mock_ctrl is not None
             await self.csc.start_mock_ctrl()
 
