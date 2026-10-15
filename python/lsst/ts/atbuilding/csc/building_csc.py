@@ -1,6 +1,6 @@
-# This file is part of ts_atbuilding_csc
+# This file is part of ts_atbuilding_csc.
 #
-# Developed for Vera C. Rubin Observatory Telescope and Site Systems.
+# Developed for the Vera C. Rubin Observatory Telescope and Site Systems.
 # This product includes software developed by the LSST Project
 # (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
@@ -13,16 +13,17 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ["ATBuildingCsc", "run_atbuilding"]
 
 import asyncio
 import json
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Any, DefaultDict
 
 from lsst.ts import salobj, tcpip, utils
@@ -102,9 +103,15 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         # Set up a dummy tcpip client, to connect to later.
         self.client: tcpip.Client | None = None
 
-        self.response_queue: DefaultDict[str, asyncio.Queue] = defaultdict(
-            asyncio.Queue
-        )
+        # Maps each command name to a FIFO of futures, one per in-flight
+        # command of that name still awaiting a response. Several commands
+        # (even of the same name) may be outstanding at once; the controller
+        # handles them serially and replies in order, so the oldest
+        # outstanding future for a name matches the next response for it.
+        # A future left cancelled by a timed-out ``run_command`` stays in the
+        # deque so its late response is popped and discarded, rather than being
+        # mis-delivered to a later command of the same name.
+        self.response_waiters: DefaultDict[str, "deque[asyncio.Future]"] = defaultdict(deque)
 
         self.callbacks = {
             "telemetry": self.handle_telemetry,
@@ -150,9 +157,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         state = [VentGateState(i) for i in message_json["data"]]
         await self.evt_ventGateState.set_write(state=state)
 
-    async def handle_extraction_fan_drive_state(
-        self, message_json: dict[str, Any]
-    ) -> None:
+    async def handle_extraction_fan_drive_state(self, message_json: dict[str, Any]) -> None:
         """Accepts an evt_extractionFanDriveState JSON message from the
         server and invokes the event in the CSC.
 
@@ -168,9 +173,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         state = FanDriveState(message_json["data"])
         await self.evt_extractionFanDriveState.set_write(state=state)
 
-    async def handle_extraction_fan_drive_fault_code(
-        self, message_json: dict[str, Any]
-    ) -> None:
+    async def handle_extraction_fan_drive_fault_code(self, message_json: dict[str, Any]) -> None:
         """Accepts an evt_extractionFanDriveFaultCode JSON message from the
         server and invokes the event in the CSC.
 
@@ -243,9 +246,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         self.log.debug(f"Connecting to host={host}, port={port}")
         try:
             self.client = tcpip.Client(host=host, port=port, log=self.log)
-            await asyncio.wait_for(
-                self.client.start_task, timeout=self.config.connection_timeout
-            )
+            await asyncio.wait_for(self.client.start_task, timeout=self.config.connection_timeout)
             asyncio.create_task(self.listen_for_messages())
             self.log.debug("connected")
 
@@ -286,9 +287,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         try:
             assert self.simulation_mode == 1
             self.mock_ctrl = MockVentController(port=0, log=self.log)
-            await asyncio.wait_for(
-                self.mock_ctrl.start_task, timeout=MOCK_CTRL_START_TIMEOUT
-            )
+            await asyncio.wait_for(self.mock_ctrl.start_task, timeout=MOCK_CTRL_START_TIMEOUT)
         except Exception as e:
             err_msg = f"Failed to start mock controller: {e!r}"
             self.log.exception(err_msg)
@@ -314,28 +313,20 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         args = " ".join([str(i) for i in data.gate])
         await self.run_command(f"open_vent_gate {args}")
 
-    async def do_resetExtractionFanDrive(
-        self, data: salobj.type_hints.BaseMsgType
-    ) -> None:
+    async def do_resetExtractionFanDrive(self, data: salobj.type_hints.BaseMsgType) -> None:
         """Implement the ``resetExtractionFanDrive`` command."""
         self.assert_enabled()
         await self.run_command("reset_extraction_fan_drive")
 
-    async def do_setExtractionFanDriveFreq(
-        self, data: salobj.type_hints.BaseMsgType
-    ) -> None:
+    async def do_setExtractionFanDriveFreq(self, data: salobj.type_hints.BaseMsgType) -> None:
         """Implement the ``setExtractionFanDriveFreq`` command."""
         self.assert_enabled()
         await self.run_command(f"set_extraction_fan_drive_freq {data.targetFrequency}")
 
-    async def do_setExtractionFanManualControlMode(
-        self, data: salobj.type_hints.BaseMsgType
-    ) -> None:
+    async def do_setExtractionFanManualControlMode(self, data: salobj.type_hints.BaseMsgType) -> None:
         """Implement the ``setExtractionFanControlMode`` command."""
         self.assert_enabled()
-        await self.run_command(
-            f"set_extraction_fan_manual_control_mode {data.enableManualControlMode}"
-        )
+        await self.run_command(f"set_extraction_fan_manual_control_mode {data.enableManualControlMode}")
 
     async def do_startExtractionFan(self, data: salobj.type_hints.BaseMsgType) -> None:
         """Implement the ``startExtractionFan`` command."""
@@ -361,21 +352,36 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         if not self.client.connected:
             self._start_reconnect("Command issued while disconnected.")
             raise RuntimeError("Cannot send a command when not connected.")
-        await asyncio.wait_for(self.client.write_str(command), timeout=TCP_TIMEOUT)
 
-        # Wait for a response
+        # Register a waiter for this command's response *before* sending, so a
+        # fast reply can never arrive before we are ready to receive it. Each
+        # in-flight command gets its own future; listen_for_messages matches
+        # responses to them in FIFO order per command name.
         command_name = command.split()[0]
-        response = await asyncio.wait_for(
-            self.response_queue[command_name].get(), timeout=TCP_TIMEOUT
-        )
+        waiters = self.response_waiters[command_name]
+        future: asyncio.Future = asyncio.get_running_loop().create_future()
+        waiters.append(future)
+
+        try:
+            await asyncio.wait_for(self.client.write_str(command), timeout=TCP_TIMEOUT)
+        except (Exception, asyncio.CancelledError):
+            # The command never made it onto the wire, so no response will
+            # arrive for it. Drop the waiter to keep the deque aligned with the
+            # commands actually sent.
+            if future in waiters:
+                waiters.remove(future)
+            raise
+
+        # Wait for the matching response. On timeout, wait_for cancels
+        # ``future``; it is deliberately left in the deque so that its eventual
+        # late response is consumed and discarded by listen_for_messages,
+        # keeping subsequent commands of the same name correctly aligned.
+        response = await asyncio.wait_for(future, timeout=TCP_TIMEOUT)
         if response["error"] != 0:
             # If an error code is supplied, log the error and
             # raise an exception.
             self.log.error(
-                "Error response received from command: "
-                + command
-                + " --> "
-                + json.dumps(response)
+                "Error response received from command: " + command + " --> " + json.dumps(response)
             )
             raise salobj.ExpectedError(json.dumps(response))
 
@@ -394,9 +400,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             try:
                 # Receive a message and format it as JSON.
                 self.listen_task = asyncio.create_task(self.client.read_str())
-                message = await asyncio.wait_for(
-                    self.listen_task, timeout=self.config.read_timeout
-                )
+                message = await asyncio.wait_for(self.listen_task, timeout=self.config.read_timeout)
 
                 message = message.strip()
                 message_json = json.loads(message)
@@ -407,9 +411,18 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
                     # handler methods.
                     await self.callbacks[command](message_json)
                 else:
-                    # Response queues provide the response back to the
-                    # command that sent them.
-                    await self.response_queue[command].put(message_json)
+                    # Deliver the response to the oldest command of this name
+                    # still awaiting one.
+                    waiters = self.response_waiters[command]
+                    if not waiters:
+                        self.log.warning(
+                            "Received unsolicited response for %r; discarding.",
+                            command,
+                        )
+                    else:
+                        future = waiters.popleft()
+                        if not future.done():
+                            future.set_result(message_json)
             except asyncio.TimeoutError:
                 self.log.warning(
                     "Timed out waiting for controller message after %.1f sec.",
@@ -440,6 +453,13 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
             await client.close()
         self.listen_task.cancel()
 
+        # Abandon any outstanding response waiters. The connection is gone, so
+        # their responses will never arrive; each in-flight run_command falls
+        # back to its own timeout. Clearing here means the next connection
+        # starts with an empty, aligned set of waiters rather than inheriting
+        # stale futures that would shift every later response by one.
+        self.response_waiters.clear()
+
     def _cancel_reconnect(self) -> None:
         """Cancel the running reconnect task, if any.
 
@@ -451,9 +471,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         if not self.reconnect_task.done() and self.reconnect_task is not current_task:
             self.reconnect_task.cancel()
 
-    def _start_reconnect(
-        self, reason: str, fault_code: ErrorCode = ErrorCode.UNEXPECTED_DISCONNECT
-    ) -> None:
+    def _start_reconnect(self, reason: str, fault_code: ErrorCode = ErrorCode.UNEXPECTED_DISCONNECT) -> None:
         """Schedule a background reconnect loop.
 
         Does nothing if the CSC is not in the DISABLED or ENABLED state,
@@ -476,9 +494,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
         if not self.reconnect_task.done():
             return
         self.log.warning("Starting reconnect loop: %s", reason)
-        self.reconnect_task = asyncio.create_task(
-            self._reconnect_loop(reason, fault_code)
-        )
+        self.reconnect_task = asyncio.create_task(self._reconnect_loop(reason, fault_code))
 
     async def _reconnect_loop(self, reason: str, fault_code: ErrorCode) -> None:
         """Retry the controller connection with exponential backoff.
@@ -533,9 +549,7 @@ class ATBuildingCsc(salobj.ConfigurableCsc):
 
         await self.fault(
             code=fault_code,
-            report=(
-                f"Reconnect failed after {RECONNECT_MAX_RETRIES} attempts: {reason}"
-            ),
+            report=(f"Reconnect failed after {RECONNECT_MAX_RETRIES} attempts: {reason}"),
         )
 
 

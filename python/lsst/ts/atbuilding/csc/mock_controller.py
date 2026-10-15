@@ -1,6 +1,6 @@
-# This file is part of ts_atbuilding_csc
+# This file is part of ts_atbuilding_csc.
 #
-# Developed for Vera C. Rubin Observatory Telescope and Site Systems.
+# Developed for the Vera C. Rubin Observatory Telescope and Site Systems.
 # This product includes software developed by the LSST Project
 # (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
@@ -13,10 +13,11 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ["MockVentController"]
 
@@ -107,9 +108,7 @@ class MockVentController(tcpip.OneClientReadLoopServer):
 
         self.log.debug(f"Received command: {data!r}")
 
-        command, *args = (
-            data.split()
-        )  # Tokenize the command and break out the first word as the method.
+        command, *args = data.split()  # Tokenize the command and break out the first word as the method.
 
         if command not in self.dispatch_dict:
             # If the command string is not in the dictionary, send back an
@@ -181,9 +180,7 @@ class MockVentController(tcpip.OneClientReadLoopServer):
         await asyncio.sleep(1.0)
         self.vent_states[gate] = state
 
-    async def close_vent_gate(
-        self, gate1: int, gate2: int, gate3: int, gate4: int
-    ) -> None:
+    async def close_vent_gate(self, gate1: int, gate2: int, gate3: int, gate4: int) -> None:
         for gate in (gate1, gate2, gate3, gate4):
             if gate == -1:
                 continue
@@ -196,9 +193,7 @@ class MockVentController(tcpip.OneClientReadLoopServer):
                     self._set_vent_state(gate, VentGateState.CLOSED)
                 )
 
-    async def open_vent_gate(
-        self, gate1: int, gate2: int, gate3: int, gate4: int
-    ) -> None:
+    async def open_vent_gate(self, gate1: int, gate2: int, gate3: int, gate4: int) -> None:
         for gate in (gate1, gate2, gate3, gate4):
             if gate == -1:
                 continue
@@ -220,9 +215,7 @@ class MockVentController(tcpip.OneClientReadLoopServer):
     async def set_extraction_fan_drive_freq(self, target_frequency: float) -> None:
         self.fan_frequency = target_frequency
 
-    async def set_extraction_fan_manual_control_mode(
-        self, enable_manual_control_mode: bool
-    ) -> None:
+    async def set_extraction_fan_manual_control_mode(self, enable_manual_control_mode: bool) -> None:
         self.manual_control_mode = enable_manual_control_mode
 
     async def start_extraction_fan(self) -> None:
@@ -276,9 +269,7 @@ class MockVentController(tcpip.OneClientReadLoopServer):
 
             # Check whether the fan drive state has changed
             if fan_drive_state != new_fan_drive_state:
-                self.log.debug(
-                    f"Fan drive state changed: {fan_drive_state} -> {new_fan_drive_state}"
-                )
+                self.log.debug(f"Fan drive state changed: {fan_drive_state} -> {new_fan_drive_state}")
                 await self.respond(
                     json.dumps(
                         dict(

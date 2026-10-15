@@ -1,3 +1,13 @@
+.. py:currentmodule:: lsst.ts.atbuilding.csc
+
+.. _lsst.ts.atbuilding.csc.version_history:
+
+###############
+Version History
+###############
+
+.. towncrier release notes start
+
 v0.3.0 (2026-05-18)
 ===================
 
