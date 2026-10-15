@@ -8,6 +8,21 @@ Version History
 
 .. towncrier release notes start
 
+v0.3.1 (2026-10-15)
+===================
+
+Documentation
+-------------
+
+- Added insert-license pre-commit hook. (`OSW-2878 <https://rubinobs.atlassian.net//browse/OSW-2878>`_)
+
+
+Other Changes and Additions
+---------------------------
+
+- Switched from black/flake8/isort to ruff, adopted the standard TSSW GitHub workflows, set up the towncrier version history, removed scons support, aligned the packaging with the developer guide, and updated the EUPS dependencies, including the ts_vent_controller to ts_atbuilding_vents rename. (`SSW-3006 <https://rubinobs.atlassian.net//browse/SSW-3006>`_)
+
+
 v0.3.0 (2026-05-18)
 ===================
 
