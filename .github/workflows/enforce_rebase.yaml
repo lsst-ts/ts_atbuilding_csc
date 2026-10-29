@@ -6,4 +6,5 @@ on:
 
 jobs:
   call-workflow:
+    if: github.head_ref != 'main'
     uses: lsst-ts/tssw_workflows/.github/workflows/enforce_rebase.yaml@main
